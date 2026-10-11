@@ -106,6 +106,18 @@ def power():
     return {"day": last, "avg": avg(last), "min": min(days[last]), "max": max(days[last]), "prev_avg": avg(prevd) if prevd else None,
             "asof": ISO()}
 
+def ttf():
+    d = yahoo("TTF=F", "3mo"); d.pop("hist"); return d
+
+def diesel():
+    import openpyxl
+    pg = get("https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en").text
+    href = re.search(r'href="(/document/download/[^"]+prices%20with%20Taxes[^"]*)"', pg).group(1)
+    ws = openpyxl.load_workbook(io.BytesIO(get("https://energy.ec.europa.eu" + href).content), read_only=True, data_only=True).worksheets[0]
+    rows = list(ws.iter_rows(max_row=60, values_only=True))
+    date = rows[1][0]; es = next(r for r in rows if str(r[0]).strip() == "Spain")
+    return {"price": round(es[2], 1), "date": date.strftime("%Y-%m-%d"), "asof": date.strftime("%Y-%m-%dT12:00:00Z")}
+
 def inventories():
     out = {}
     try:
@@ -164,7 +176,7 @@ def news():
     if not out: raise RuntimeError("no news")
     return {"items": out[:15]}
 
-for name, fn in [("atym", atym), ("fx", fx), ("copper", copper), ("gas", gas), ("power", power),
+for name, fn in [("atym", atym), ("fx", fx), ("copper", copper), ("gas", gas), ("power", power), ("ttf", ttf), ("diesel", diesel),
                  ("inventories", inventories), ("peers", peers), ("news", news)]:
     section(name, fn)
 

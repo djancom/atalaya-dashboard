@@ -34,8 +34,15 @@ async function load(){let d;try{d=await (await fetch('data.json?'+Date.now())).j
  <span>LME cash official ($/t)</span><b>${f(c.lme_cash,0)}</b><span>LME 3M ($/t)</span><b>${f(c.lme_3m,0)}</b>
  <span>COMEX − LME ($/t)</span><b>${f(c.spread_t,0)}</b></div>${asof(c,H)}<div class="mut">LME: ${c.lme_date||'–'} (end of day)</div></section>`;
  s+=`<section class="t"><h2>FX</h2><div class="kv"><span>GBP/USD</span><b>${f(x.gbpusd,4)} ${pc(x.gbpusd_chg_pct)}</b><span>EUR/USD</span><b>${f(x.eurusd,4)} ${pc(x.eurusd_chg_pct)}</b></div>${asof(x,H)}</section>`;
- s+=`<section class="t"><h2>Spain energy</h2><div class="kv"><span>MIBGAS PVB day-ahead (€/MWh)</span><b>${f(g.price)}</b><span class="mut">delivery ${g.delivery||'–'} · prev ${f(g.prev)}</span><span></span>
- <span>Spain power day-ahead avg (€/MWh)</span><b>${f(p.avg)}</b><span class="mut">${p.day||'–'} · min ${f(p.min)} / max ${f(p.max)} · prev ${f(p.prev_avg)}</span><span></span></div>${asof(g,D)}</section>`;
+ const t=d.ttf||{},ds=d.diesel||{},ok=o=>o&&!o.unavailable;
+ const row=(lbl,v,freq,o,maxH,extra='')=>`<span>${lbl} <span class="mut">(${freq})</span></span><b>${ok(o)?v:'<span class="mut">unavailable</span>'}</b><span class="mut" style="grid-column:1/-1;margin-top:-3px">${extra}${ok(o)?asof(o,maxH).replace(/<\/?div[^>]*>/g,''):''}</span>`;
+ s+=`<section class="t"><h2>Energy costs</h2><div class="kv">
+ ${row('MIBGAS PVB day-ahead (€/MWh)',f(g.price),'daily',g,D,`delivery ${g.delivery||'–'} · prev ${f(g.prev)} · `)}
+ ${row('TTF front-month (€/MWh)',f(t.price)+' '+pc(t.chg_pct),'daily, ~delayed',t,H)}
+ ${row('Spain power day-ahead avg (€/MWh)',f(p.avg),'daily',p,D,`${p.day||'–'} · min ${f(p.min)} / max ${f(p.max)} · `)}
+ ${row('Spain diesel, EU Oil Bulletin (€/1000L)',f(ds.price,1),'weekly',ds,24*10,`week of ${ds.date||'–'} · `)}
+ ${row('ICE low-sulphur gasoil','','daily',null,0)}
+ </div></section>`;
  const inv=(k,u)=>iv[k]?`<b>${f(iv[k].t,0)} t${iv[k].stale?'<span class="badge">stale</span>':''}</b><span class="mut">${iv[k].date||''}</span>`:'<b class="mut">unavailable</b><span></span>';
  s+=`<section class="t"><h2>Copper inventories</h2><div class="kv" style="grid-template-columns:1fr auto auto"><span>LME</span>${inv('lme')}<span>COMEX</span>${inv('comex')}<span>SHFE (weekly)</span>${inv('shfe')}</div><div class="mut">Best-effort, daily/weekly.</div></section>`;
  s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span>${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td></tr>`).join('')}
