@@ -1,0 +1,46 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atalaya Copper Dashboard</title>
+<style>
+body{font:14px/1.4 system-ui,sans-serif;margin:0;background:#0f1419;color:#e6e6e6}
+header{padding:14px 20px;background:#1a2129;border-bottom:3px solid #b87333;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+h1{margin:0;font-size:20px;color:#e8a165}h2{margin:0 0 8px;font-size:14px;color:#e8a165;text-transform:uppercase;letter-spacing:.05em}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:12px}
+.t{background:#1a2129;border-radius:8px;padding:14px}.wide{grid-column:1/-1}
+.big{font-size:32px;font-weight:600}.up{color:#4caf50}.dn{color:#ef5350}.mut{color:#8a96a3;font-size:12px}
+.badge{background:#c62828;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;margin-left:6px}
+table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right;border-bottom:1px solid #2a333d}td:first-child,th:first-child{text-align:left}
+.kv{display:grid;grid-template-columns:1fr auto;gap:3px 12px}a{color:#9cc4ff;text-decoration:none}li{margin:4px 0}ul{padding-left:18px;margin:0}
+</style></head><body>
+<header><h1>Atalaya Mining &middot; Copper Dashboard</h1><span class="mut" id="gen"></span></header>
+<main id="m">Loading…</main>
+<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; MIBGAS; REE). Not investment advice. Auto-refreshes every 20 min.</footer>
+<script>
+const $=s=>document.querySelector(s),f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
+function asof(o,maxH){if(!o||o.unavailable)return'<div class="mut">unavailable</div>';const t=new Date(o.asof),h=(Date.now()-t)/36e5;
+ return `<div class="mut">as of ${isNaN(t)?o.asof:t.toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}${(h>maxH||o.ok===false)?'<span class="badge">stale</span>':''}</div>`}
+function spark(h,w=560,ht=110){if(!h||h.length<2)return'';const v=h.map(x=>x[1]),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1;
+ const p=v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(ht-4-(y-mn)/r*(ht-8)).toFixed(1)}`).join(' ');
+ return `<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px"><polyline fill="none" stroke="#e8a165" stroke-width="2" points="${p}"/></svg><div class="mut">1M range ${f(mn)} – ${f(mx)}</div>`}
+async function load(){let d;try{d=await (await fetch('data.json?'+Date.now())).json()}catch(e){$('#m').textContent='Could not load data.json';return}
+ $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
+ const H=26,D=96; let s='';
+ s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE)</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
+ <div><div class="big">${f(a.price,1)}p</div><div>${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
+ <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span>vs copper 1M</span><b>${pc(a.rel_m1)}</b><span>vs copper YTD</span><b>${pc(a.rel_ytd)}</b></div>
+ <div style="flex:1;min-width:260px">${spark(a.hist)}</div></div></section>`;
+ s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG ($/lb)</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
+ <span>COMEX ($/t)</span><b>${f(c.comex_t,0)}</b><span>COMEX (£/t)</span><b>${f(c.comex_gbp_t,0)}</b>
+ <span>LME cash official ($/t)</span><b>${f(c.lme_cash,0)}</b><span>LME 3M ($/t)</span><b>${f(c.lme_3m,0)}</b>
+ <span>COMEX − LME ($/t)</span><b>${f(c.spread_t,0)}</b></div>${asof(c,H)}<div class="mut">LME: ${c.lme_date||'–'} (end of day)</div></section>`;
+ s+=`<section class="t"><h2>FX</h2><div class="kv"><span>GBP/USD</span><b>${f(x.gbpusd,4)} ${pc(x.gbpusd_chg_pct)}</b><span>EUR/USD</span><b>${f(x.eurusd,4)} ${pc(x.eurusd_chg_pct)}</b></div>${asof(x,H)}</section>`;
+ s+=`<section class="t"><h2>Spain energy</h2><div class="kv"><span>MIBGAS PVB day-ahead (€/MWh)</span><b>${f(g.price)}</b><span class="mut">delivery ${g.delivery||'–'} · prev ${f(g.prev)}</span><span></span>
+ <span>Spain power day-ahead avg (€/MWh)</span><b>${f(p.avg)}</b><span class="mut">${p.day||'–'} · min ${f(p.min)} / max ${f(p.max)} · prev ${f(p.prev_avg)}</span><span></span></div>${asof(g,D)}</section>`;
+ const inv=(k,u)=>iv[k]?`<b>${f(iv[k].t,0)} t${iv[k].stale?'<span class="badge">stale</span>':''}</b><span class="mut">${iv[k].date||''}</span>`:'<b class="mut">unavailable</b><span></span>';
+ s+=`<section class="t"><h2>Copper inventories</h2><div class="kv" style="grid-template-columns:1fr auto auto"><span>LME</span>${inv('lme')}<span>COMEX</span>${inv('comex')}<span>SHFE (weekly)</span>${inv('shfe')}</div><div class="mut">Best-effort, daily/weekly.</div></section>`;
+ s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span>${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td></tr>`).join('')}
+ <tr><td><b>ATYM.L</b></td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td></tr></table>${asof(d.peers,H)}</section>`;
+ s+=`<section class="t wide"><h2>News</h2><ul>${((d.news||{}).items||[]).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${n.ts?new Date(n.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;
+ $('#m').innerHTML=s}
+load();setInterval(load,20*60*1000);
+</script></body></html>
