@@ -78,15 +78,27 @@ async function slow() {
   const out = { generated: iso(Date.now()) }; if (r.ok) out.rns = r; if (n.ok) out.news = n; return out;
 }
 
+const RANGES = { "1d": ["1d", "5m", 120], "1mo": ["1mo", "1d", 3600], "3mo": ["3mo", "1d", 3600], "6mo": ["6mo", "1d", 3600], "1y": ["1y", "1d", 3600], "5y": ["5y", "1wk", 3600] };
+async function chart(r) {
+  const [range, iv] = RANGES[r];
+  const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/ATYM.L?range=${range}&interval=${iv}`)).json();
+  const res = j.chart.result[0], q = res.indicators.quote[0].close;
+  const pts = (res.timestamp || []).map((t, i) => [t, q[i]]).filter(p => p[1] != null).map(p => [p[0], Math.round(p[1] * 100) / 100]);
+  if (!pts.length) throw new Error("no points");
+  return { range: r, interval: iv, pts, asof: iso((res.meta.regularMarketTime || pts.at(-1)[0]) * 1000), ok: true };
+}
+
 export default {
   async fetch(req, env, ctx) {
     const origin = req.headers.get("Origin") || "", url = new URL(req.url);
     const cors = { "Vary": "Origin", ...(allowed(origin) ? { "Access-Control-Allow-Origin": origin } : {}) };
     if (req.method === "OPTIONS") return new Response(null, { headers: { ...cors, "Access-Control-Allow-Methods": "GET" } });
     if (origin && !allowed(origin)) return new Response("forbidden", { status: 403 });
-    const route = { "/prices": [prices, 120], "/slow": [slow, 600] }[url.pathname];
+    let route = { "/prices": [prices, 120], "/slow": [slow, 600] }[url.pathname];
+    let ck = url.pathname;
+    if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r]) { route = [() => chart(r), RANGES[r][2]]; ck += "?range=" + r; } }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
-    const key = new Request(url.origin + url.pathname), cache = caches.default;
+    const key = new Request(url.origin + ck), cache = caches.default;
     let res = await cache.match(key);
     if (!res) {
       const body = await Promise.race([route[0](), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 20000))]).catch(e => null);
