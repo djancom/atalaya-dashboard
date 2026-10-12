@@ -2,3 +2,10 @@ name = "atalaya-data"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
+
+[[kv_namespaces]]
+binding = "DAILY"
+id = "6675d7a145304f7483fda109d4d83172"
+
+[triggers]
+crons = ["*/30 6-21 * * 1-5"]

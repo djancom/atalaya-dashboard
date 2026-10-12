@@ -1,7 +1,7 @@
 name: update-data
 on:
   schedule:
-    - cron: "7,27,47 7-20 * * 1-5"
+    - cron: "7 6-20 * * 1-5"  # hourly fallback; Cloudflare cron is primary
   workflow_dispatch:
 permissions:
   contents: write

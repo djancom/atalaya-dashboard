@@ -101,12 +101,83 @@ async function chart(r, sym = "ATYM.L") {
   return { range: r, interval: iv, pts, asof: iso((res.meta.regularMarketTime || pts.at(-1)[0]) * 1000), ok: true };
 }
 
+// ---- daily items, refreshed by Cron Trigger into KV ----
+async function unzipEntry(buf, name) {
+  const u = new Uint8Array(buf), dv = new DataView(buf);
+  let e = u.length - 22; while (e > 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  let p = dv.getUint32(e + 16, true); const n = dv.getUint16(e + 10, true), td = new TextDecoder();
+  for (let i = 0; i < n; i++) {
+    const meth = dv.getUint16(p + 10, true), csz = dv.getUint32(p + 20, true), fl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const fn = td.decode(u.subarray(p + 46, p + 46 + fl));
+    if (fn === name) {
+      const ds = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true), data = u.subarray(ds, ds + csz);
+      if (meth === 0) return td.decode(data);
+      return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+    }
+    p += 46 + fl + xl + cl;
+  }
+  throw new Error("zip entry missing " + name);
+}
+async function dGas() {
+  const t = (await (await get("https://www.mibgas.es/en")).text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const m = t.match(/Price Day Ahead ES - (\d{2})\/(\d{2}) ([\d.,]+) €\/MWh (-?[\d.,]+) €\/MWh/);
+  if (!m) throw new Error("MIBGAS price not found");
+  const num = s => +s.replace(/\./g, "").replace(",", "."), now = new Date(), y = now.getUTCFullYear() - (+m[2] === 1 && now.getUTCMonth() === 11 ? -1 : 0);
+  const price = num(m[3]), ch = num(m[4]);
+  return { price, prev: Math.round((price - ch) * 100) / 100, delivery: `${y}-${m[2]}-${m[1]}`, asof: iso(Date.now()), source: "mibgas.es last price", ok: true };
+}
+async function dPower() {
+  const d = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const j = await (await get(`https://apidatos.ree.es/en/datos/mercados/precios-mercados-tiempo-real?start_date=${d(-1)}T00:00&end_date=${d(1)}T23:59&time_trunc=hour`)).json();
+  const spot = j.included.find(i => i.id === "600" || /spot/i.test(i.attributes.title)), days = {};
+  for (const v of spot.attributes.values) (days[v.datetime.slice(0, 10)] ||= []).push(v.value);
+  const k = Object.keys(days).sort(), last = k.at(-1), prev = k.at(-2), avg = x => Math.round(days[x].reduce((a, b) => a + b, 0) / days[x].length * 100) / 100;
+  return { day: last, avg: avg(last), min: Math.min(...days[last]), max: Math.max(...days[last]), prev_avg: prev ? avg(prev) : null, asof: iso(Date.now()), ok: true };
+}
+async function dLme() {
+  const t = await (await get("https://www.westmetall.com/en/markdaten.php?action=table&field=LME_Cu_cash")).text();
+  const M = { January: 1, February: 2, March: 3, April: 4, May: 5, June: 6, July: 7, August: 8, September: 9, October: 10, November: 11, December: 12 };
+  const rows = [...t.matchAll(/<td[^>]*>(\d{2})\. (\w+) (\d{4})<\/td>\s*<td[^>]*>([\d,.]+)<\/td>\s*<td[^>]*>([\d,.]+)<\/td>\s*<td[^>]*>([\d,.]+)<\/td>/g)];
+  if (!rows.length) throw new Error("no LME rows");
+  const n = s => +s.replace(/,/g, ""), r = rows[0], date = `${r[3]}-${String(M[r[2]]).padStart(2, "0")}-${r[1]}`;
+  return { lme_cash: n(r[4]), lme_3m: n(r[5]), lme_stock: n(r[6]), lme_date: date, lme_prev: rows[1] ? n(rows[1][4]) : null, asof: date + "T17:00:00Z", ok: true };
+}
+async function dDiesel() {
+  const pg = await (await get("https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en")).text();
+  const href = pg.match(/href="(\/document\/download\/[^"]+prices%20with%20Taxes[^"]*)"/)[1].replace(/&amp;/g, "&");
+  const buf = await (await get("https://energy.ec.europa.eu" + href, 15000)).arrayBuffer();
+  const ss = [...(await unzipEntry(buf, "xl/sharedStrings.xml")).matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => m[1].replace(/<[^>]+>/g, ""));
+  const sh = await unzipEntry(buf, "xl/worksheets/sheet1.xml"), cell = (row, col) => {
+    const m = row.match(new RegExp(`<c r="${col}\\d+"([^>]*)>(?:<f>[^<]*</f>)?<v>([^<]*)</v>`)); if (!m) return null;
+    return /t="s"/.test(m[1]) ? ss[+m[2]] : +m[2]; };
+  const rows = [...sh.matchAll(/<row [^>]*>([\s\S]*?)<\/row>/g)].map(m => m[1]);
+  const serial = cell(rows[1], "A"), es = rows.find(r => String(cell(r, "A")).trim() === "Spain");
+  if (!es || !serial) throw new Error("Spain row/date not found");
+  const date = new Date(Date.UTC(1899, 11, 30) + serial * 864e5).toISOString().slice(0, 10);
+  return { price: Math.round(cell(es, "C") * 10) / 10, date, asof: date + "T12:00:00Z", ok: true };
+}
+async function refreshDaily(env) {
+  const old = JSON.parse((await env.DAILY.get("daily")) || "{}"), out = { generated: iso(Date.now()), errors: {} };
+  const jobs = { gas: dGas, power: dPower, lme: dLme, diesel: dDiesel, news };
+  await Promise.all(Object.entries(jobs).map(async ([k, fn]) => {
+    try { out[k] = await fn(); } catch (e) { out.errors[k] = String(e).slice(0, 150); if (old[k]) out[k] = { ...old[k], ok: false }; }
+  }));
+  await env.DAILY.put("daily", JSON.stringify(out));
+  return out;
+}
+
 export default {
+  async scheduled(ev, env, ctx) { ctx.waitUntil(refreshDaily(env)); },
   async fetch(req, env, ctx) {
     const origin = req.headers.get("Origin") || "", url = new URL(req.url);
     const cors = { "Vary": "Origin", ...(allowed(origin) ? { "Access-Control-Allow-Origin": origin } : {}) };
     if (req.method === "OPTIONS") return new Response(null, { headers: { ...cors, "Access-Control-Allow-Methods": "GET" } });
     if (origin && !allowed(origin)) return new Response("forbidden", { status: 403 });
+    if (url.pathname === "/daily" && req.method === "GET") {
+      let v = await env.DAILY.get("daily");
+      if (!v) v = JSON.stringify(await refreshDaily(env));
+      return new Response(v, { headers: { ...cors, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+    }
     let route = { "/prices": [prices, 120], "/slow": [slow, 600] }[url.pathname];
     let ck = url.pathname;
     if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo", s = url.searchParams.get("symbol") || "ATYM.L"; if (RANGES[r] && SYMS.includes(s)) { route = [() => chart(r, s), RANGES[r][2]]; ck += "?range=" + r + "&symbol=" + s; } }

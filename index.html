@@ -72,17 +72,19 @@ function isOpen(e){if(e==='CME'){const [d,m]=tz('America/New_York');if(d==='Sat'
  const [z,o,c]=EX[e],[d,m]=tz(z);return !['Sat','Sun'].includes(d)&&m>=o&&m<c}
 const mk=e=>isOpen(e)?'<span class="badge" style="background:#2e7d32">opn</span>':'<span class="badge" style="background:#c62828">clsd</span>';
 const exOf=s=>s.endsWith('.L')?'LSE':s.endsWith('.TO')?'TSX':s.endsWith('.AX')?'ASX':'NYSE';
-const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={};
+const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={},DY={};
 const wget=p=>fetch(W+p,{signal:AbortSignal.timeout(15000)}).then(r=>r.ok?r.json():{}).catch(()=>({}));
 const newer=(a,b)=>!a||!b||!a.asof||!b.asof||new Date(b.asof)>=new Date(a.asof);
 function merged(){const d={...B};
+ for(const k of ['gas','power','diesel','news']){const v=DY[k];if(v&&v.ok!==false&&newer(d[k],v))d[k]={...(d[k]||{}),...v}}
+ if(DY.lme&&DY.lme.ok!==false&&(!d.copper||!d.copper.lme_date||DY.lme.lme_date>=d.copper.lme_date)){d.copper={...(d.copper||{}),...Object.fromEntries(Object.entries(DY.lme).filter(([k])=>k.startsWith('lme_')))};d.inventories={...(d.inventories||{}),lme:{t:DY.lme.lme_stock,date:DY.lme.lme_date}}}
  for(const k of ['atym','fx','ttf','peers','rns','news']){const v=P[k]||S[k];if(v&&newer(d[k],v))d[k]=v}
- if(P.copper&&newer(d.copper,P.copper)){const c={...d.copper,...P.copper};if(c.lme_cash)c.spread_t=Math.round((c.comex_t-c.lme_cash)*10)/10;d.copper=c}
+ if(P.copper&&newer(d.copper,P.copper))d.copper={...d.copper,...P.copper};if(d.copper&&d.copper.lme_cash&&d.copper.comex_t)d.copper={...d.copper,spread_t:Math.round((d.copper.comex_t-d.copper.lme_cash)*10)/10};
  if(P.peer_rows&&d.peers){const m=Object.fromEntries(P.peer_rows.map(r=>[r.sym,r]));d.peers={...d.peers,rows:d.peers.rows.map(r=>m[r.sym]||r)}}
- const g=[B.generated,P.generated,S.generated].filter(Boolean).sort().pop();d.generated=g;return d}
+ const g=[B.generated,P.generated,S.generated,DY.generated].filter(Boolean).sort().pop();d.generated=g;return d}
 async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
 async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
-async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x)]);render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x)]);render()}
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
@@ -112,5 +114,5 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  <tr><td><b>ATYM.L</b> ${mk('LSE')}</td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td></tr></table>${asof(d.peers,H)}</section>`;
  s+=`<section class="t wide"><h2>News</h2><ul>${((d.news||{}).items||[]).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${n.ts?new Date(n.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;
  $('#m').innerHTML=s}
-setR('1mo');setCU('1mo');setInterval(()=>CR==='1d'&&setR('1d'),2*60*1000);load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
+setR('1mo');setCU('1mo');setInterval(()=>CR==='1d'&&setR('1d'),2*60*1000);load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>Promise.all([base(),wget('/daily').then(x=>DY=x)]).then(render),20*60*1000);
 </script></body></html>
