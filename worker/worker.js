@@ -162,22 +162,38 @@ async function dVal() {
   const H = { ...UA, Cookie: ck };
   const crumb = await (await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", { headers: H, signal: AbortSignal.timeout(8000) })).text();
   if (!crumb || crumb.length > 20 || /[<{ ]/.test(crumb)) throw new Error("no crumb");
+  // Yahoo mixes quote currency (e.g. GBp) and reporting currency (USD/EUR) in its ratios, so recompute everything in USD.
+  const fxr = { USD: 1 };
+  await Promise.all(["GBP", "EUR", "CAD", "AUD"].map(async c => { try { fxr[c] = (await yahoo(c + "USD=X")).price; } catch (e) { } }));
+  if (fxr.GBP) fxr.GBp = fxr.GBP / 100;
   const syms = ["ATYM.L", ...PEERS.map(p => p[0])], out = {};
   await Promise.all(syms.map(async s => {
     try {
-      const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=summaryDetail,defaultKeyStatistics,financialData&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json();
-      const r = j.quoteSummary.result[0], sd = r.summaryDetail || {}, ks = r.defaultKeyStatistics || {}, v = x => x && typeof x.raw === "number" ? x.raw : null;
-      const tpe = v(sd.trailingPE), fpe = v(sd.forwardPE) ?? v(ks.forwardPE), dy = v(sd.dividendYield) ?? v(sd.trailingAnnualDividendYield);
-      out[s] = { pe: tpe ?? fpe, pe_type: tpe != null ? "T" : fpe != null ? "F" : null, ev_ebitda: v(ks.enterpriseToEbitda), div_yield: dy != null ? Math.round(dy * 10000) / 100 : null };
+      const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=summaryDetail,defaultKeyStatistics,financialData,price&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json();
+      const r = j.quoteSummary.result[0], sd = r.summaryDetail || {}, ks = r.defaultKeyStatistics || {}, fd = r.financialData || {}, pr = r.price || {};
+      const v = x => x && typeof x.raw === "number" ? x.raw : null;
+      const qc = pr.currency, fc = fd.financialCurrency || qc, q = fxr[qc], fr = fxr[fc];
+      if (!q || !fr) throw new Error("fx " + qc + "/" + fc);
+      const px = v(pr.regularMarketPrice), pxU = px * q, sh = v(ks.sharesOutstanding);
+      const eps = v(ks.trailingEps), feps = v(ks.forwardEps);
+      let pe = null, pe_type = null;
+      if (eps > 0) { pe = pxU / (eps * fr); pe_type = "T"; } else if (feps > 0) { pe = pxU / (feps * fr); pe_type = "F"; }
+      const debt = v(fd.totalDebt), cash = v(fd.totalCash), ebitda = v(fd.ebitda);
+      const ev = sh && debt != null && cash != null ? sh * pxU + (debt - cash) * fr : null;
+      const ev_ebitda = ev != null && ebitda > 0 ? ev / (ebitda * fr) : null;
+      const tdr = v(sd.trailingAnnualDividendRate);  // reported in the financial currency
+      const dy = tdr != null ? tdr * fr / pxU * 100 : null;
+      const rd = (x, n) => x == null || !isFinite(x) ? null : Math.round(x * 10 ** n) / 10 ** n;
+      out[s] = { pe: rd(pe, 2), pe_type, ev_ebitda: rd(ev_ebitda, 2), div_yield: rd(dy, 2), qc, fc };
     } catch (e) { }
   }));
   if (!Object.keys(out).length) throw new Error("quoteSummary blocked");
-  return { rows: out, asof: iso(Date.now()), ok: true };
+  return { rows: out, v: 2, asof: iso(Date.now()), ok: true };
 }
 async function refreshDaily(env) {
   const old = JSON.parse((await env.DAILY.get("daily")) || "{}"), out = { generated: iso(Date.now()), errors: {} };
   const jobs = { gas: dGas, power: dPower, lme: dLme, diesel: dDiesel, news };
-  const fresh = old.val && old.val.ok !== false && Date.now() - Date.parse(old.val.asof) < 20 * 3600e3;
+  const fresh = old.val && old.val.ok !== false && Date.now() - Date.parse(old.val.asof) < 20 * 3600e3 && old.val.v === 2;
   if (fresh) out.val = old.val; else jobs.val = dVal;  // valuations once per day
   await Promise.all(Object.entries(jobs).map(async ([k, fn]) => {
     try { out[k] = await fn(); } catch (e) { out.errors[k] = String(e).slice(0, 150); if (old[k]) out[k] = { ...old[k], ok: false }; }
