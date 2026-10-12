@@ -27,7 +27,7 @@ const EX={LSE:['Europe/London',480,990],NYSE:['America/New_York',570,960],TSX:['
 function tz(z){const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:z,weekday:'short',hour:'numeric',minute:'numeric',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return [p.weekday,+p.hour*60+ +p.minute]}
 function isOpen(e){if(e==='CME'){const [d,m]=tz('America/New_York');if(d==='Sat')return false;if(d==='Sun')return m>=1080;if(d==='Fri')return m<1020;return m<1020||m>=1080}
  const [z,o,c]=EX[e],[d,m]=tz(z);return !['Sat','Sun'].includes(d)&&m>=o&&m<c}
-const mk=e=>isOpen(e)?'<span class="badge" style="background:#2e7d32">opn</span>':'<span class="badge" style="background:#555">clsd</span>';
+const mk=e=>isOpen(e)?'<span class="badge" style="background:#2e7d32">opn</span>':'<span class="badge" style="background:#c62828">clsd</span>';
 const exOf=s=>s.endsWith('.L')?'LSE':s.endsWith('.TO')?'TSX':s.endsWith('.AX')?'ASX':'NYSE';
 const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={};
 const wget=p=>fetch(W+p,{signal:AbortSignal.timeout(15000)}).then(r=>r.ok?r.json():{}).catch(()=>({}));
