@@ -156,9 +156,29 @@ async function dDiesel() {
   const date = new Date(Date.UTC(1899, 11, 30) + serial * 864e5).toISOString().slice(0, 10);
   return { price: Math.round(cell(es, "C") * 10) / 10, date, asof: date + "T12:00:00Z", ok: true };
 }
+async function dVal() {
+  const r0 = await fetch("https://fc.yahoo.com", { headers: UA, redirect: "manual", signal: AbortSignal.timeout(8000) });
+  const ck = (r0.headers.getSetCookie ? r0.headers.getSetCookie() : [r0.headers.get("set-cookie") || ""]).map(c => c.split(";")[0]).filter(Boolean).join("; ");
+  const H = { ...UA, Cookie: ck };
+  const crumb = await (await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", { headers: H, signal: AbortSignal.timeout(8000) })).text();
+  if (!crumb || crumb.length > 20 || /[<{ ]/.test(crumb)) throw new Error("no crumb");
+  const syms = ["ATYM.L", ...PEERS.map(p => p[0])], out = {};
+  await Promise.all(syms.map(async s => {
+    try {
+      const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=summaryDetail,defaultKeyStatistics,financialData&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json();
+      const r = j.quoteSummary.result[0], sd = r.summaryDetail || {}, ks = r.defaultKeyStatistics || {}, v = x => x && typeof x.raw === "number" ? x.raw : null;
+      const tpe = v(sd.trailingPE), fpe = v(sd.forwardPE) ?? v(ks.forwardPE), dy = v(sd.dividendYield) ?? v(sd.trailingAnnualDividendYield);
+      out[s] = { pe: tpe ?? fpe, pe_type: tpe != null ? "T" : fpe != null ? "F" : null, ev_ebitda: v(ks.enterpriseToEbitda), div_yield: dy != null ? Math.round(dy * 10000) / 100 : null };
+    } catch (e) { }
+  }));
+  if (!Object.keys(out).length) throw new Error("quoteSummary blocked");
+  return { rows: out, asof: iso(Date.now()), ok: true };
+}
 async function refreshDaily(env) {
   const old = JSON.parse((await env.DAILY.get("daily")) || "{}"), out = { generated: iso(Date.now()), errors: {} };
   const jobs = { gas: dGas, power: dPower, lme: dLme, diesel: dDiesel, news };
+  const fresh = old.val && old.val.ok !== false && Date.now() - Date.parse(old.val.asof) < 20 * 3600e3;
+  if (fresh) out.val = old.val; else jobs.val = dVal;  // valuations once per day
   await Promise.all(Object.entries(jobs).map(async ([k, fn]) => {
     try { out[k] = await fn(); } catch (e) { out.errors[k] = String(e).slice(0, 150); if (old[k]) out[k] = { ...old[k], ok: false }; }
   }));
