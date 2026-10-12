@@ -23,6 +23,12 @@ function asof(o,maxH){if(!o||o.unavailable)return'<div class="mut">unavailable</
 function spark(h,w=560,ht=110){if(!h||h.length<2)return'';const v=h.map(x=>x[1]),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1;
  const p=v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(ht-4-(y-mn)/r*(ht-8)).toFixed(1)}`).join(' ');
  return `<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px"><polyline fill="none" stroke="#e8a165" stroke-width="2" points="${p}"/></svg><div class="mut">1M range ${f(mn)} – ${f(mx)}</div>`}
+const EX={LSE:['Europe/London',480,990],NYSE:['America/New_York',570,960],TSX:['America/Toronto',570,960],ASX:['Australia/Sydney',600,960]};
+function tz(z){const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:z,weekday:'short',hour:'numeric',minute:'numeric',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return [p.weekday,+p.hour*60+ +p.minute]}
+function isOpen(e){if(e==='CME'){const [d,m]=tz('America/New_York');if(d==='Sat')return false;if(d==='Sun')return m>=1080;if(d==='Fri')return m<1020;return m<1020||m>=1080}
+ const [z,o,c]=EX[e],[d,m]=tz(z);return !['Sat','Sun'].includes(d)&&m>=o&&m<c}
+const mk=e=>isOpen(e)?'<span class="badge" style="background:#2e7d32">opn</span>':'<span class="badge" style="background:#555">clsd</span>';
+const exOf=s=>s.endsWith('.L')?'LSE':s.endsWith('.TO')?'TSX':s.endsWith('.AX')?'ASX':'NYSE';
 const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={};
 const wget=p=>fetch(W+p,{signal:AbortSignal.timeout(15000)}).then(r=>r.ok?r.json():{}).catch(()=>({}));
 const newer=(a,b)=>!a||!b||!a.asof||!b.asof||new Date(b.asof)>=new Date(a.asof);
@@ -37,12 +43,12 @@ async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wge
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
- s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE)</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
+ s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE) ${mk('LSE')}</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
  <div><div class="big">${f(a.price,1)}p</div><div><span class="mut">last session</span> ${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
  <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b></div>
  <div style="flex:1;min-width:260px">${spark(a.hist)}</div></div></section>`;
  s+=`<section class="t wide"><h2>ATYM RNS <span class="mut">(Investegate, times UK)</span></h2><table>${((d.rns||{}).items||[]).map(r=>`<tr><td><a href="${r.link}" target="_blank" rel="noopener">${r.title.replace(/</g,'&lt;')}</a>${r.date==new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'})?'<span class="badge" style="background:#2e7d32">today</span>':''}</td><td class="mut">${r.date} ${r.time}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${asof(d.rns,H)}</section>`;
- s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG ($/lb)</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
+ s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG ($/lb) ${mk('CME')}</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
  <span>COMEX ($/t)</span><b>${f(c.comex_t,0)}</b><span>COMEX (£/t)</span><b>${f(c.comex_gbp_t,0)}</b>
  <span>LME cash official ($/t)</span><b>${f(c.lme_cash,0)}</b><span>LME 3M ($/t)</span><b>${f(c.lme_3m,0)}</b>
  <span>COMEX − LME ($/t)</span><b>${f(c.spread_t,0)}</b></div>${asof(c,H)}<div class="mut">LME: ${c.lme_date||'–'} (end of day)</div></section>`;
@@ -58,9 +64,9 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  </div></section>`;
  const inv=(k,u)=>iv[k]?`<b>${f(iv[k].t,0)} t${iv[k].stale?'<span class="badge">stale</span>':''}</b><span class="mut">${iv[k].date||''}</span>`:'<b class="mut">unavailable</b><span></span>';
  s+=`<section class="t"><h2>Copper inventories</h2><div class="kv" style="grid-template-columns:1fr auto auto"><span>LME</span>${inv('lme')}<span>COMEX</span>${inv('comex')}<span>SHFE (weekly)</span>${inv('shfe')}</div><div class="mut">Best-effort, daily/weekly.</div></section>`;
- s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span>${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td></tr>`).join('')}
- <tr><td><b>ATYM.L</b></td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td></tr></table>${asof(d.peers,H)}</section>`;
+ s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span> ${mk(exOf(r.sym))}${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td></tr>`).join('')}
+ <tr><td><b>ATYM.L</b> ${mk('LSE')}</td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td></tr></table>${asof(d.peers,H)}</section>`;
  s+=`<section class="t wide"><h2>News</h2><ul>${((d.news||{}).items||[]).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${n.ts?new Date(n.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;
  $('#m').innerHTML=s}
-load();setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
+load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
 </script></body></html>
