@@ -38,9 +38,13 @@ def yahoo(sym, rng="1y"):
         if "." not in s: s += ".us"
         rows = get(f"https://stooq.com/q/d/l/?s={s}&i=d").text.strip().splitlines()[1:]
         pts = [(int(dt.datetime.strptime(r.split(",")[0], "%Y-%m-%d").replace(tzinfo=dt.timezone.utc).timestamp()), float(r.split(",")[4])) for r in rows[-260:]]
-        price = pts[-1][1]; asof = ISO(dt.datetime.fromtimestamp(pts[-1][0], dt.timezone.utc)); cur = None
+        price = pts[-1][1]; asof = ISO(dt.datetime.fromtimestamp(pts[-1][0], dt.timezone.utc))
+        cur = {"uk": "GBp", "ca": "CAD", "au": "AUD", "us": "USD"}.get(s.rsplit(".", 1)[1])
     # previous close = last daily close before today's bar
-    prev = pts[-2][1] if len(pts) > 1 else price
+    # prev close: if the last daily bar is already today's session use the bar before it, else the last bar
+    day = lambda ts: dt.datetime.fromtimestamp(ts, dt.timezone.utc).date()
+    same = day(pts[-1][0]) == dt.datetime.strptime(asof[:10], "%Y-%m-%d").date()
+    prev = (pts[-2][1] if len(pts) > 1 else price) if same else pts[-1][1]
     def back(days):
         cut = NOW.timestamp() - days * 86400
         c = [p for t, p in pts if t <= cut]; return c[-1] if c else pts[0][1]

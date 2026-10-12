@@ -17,8 +17,8 @@ table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right
 <footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; MIBGAS; REE). Not investment advice. Auto-refreshes every 20 min.</footer>
 <script>
 const $=s=>document.querySelector(s),f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
-const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
-function asof(o,maxH){if(!o||o.unavailable)return'<div class="mut">unavailable</div>';const t=new Date(o.asof),h=(Date.now()-t)/36e5;
+const pp=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v,1)} pp</span>`;const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
+function asof(o,maxH){if(!o||o.unavailable)return'<div class="mut">unavailable</div>';const t=new Date(o.asof);let h=0;for(let x=+t;x<Date.now();x+=36e5){const w=new Date(x).getUTCDay();if(w&&w<6)h++}/* weekday hours only */
  return `<div class="mut">as of ${isNaN(t)?o.asof:t.toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}${(h>maxH||o.ok===false)?'<span class="badge">stale</span>':''}</div>`}
 function spark(h,w=560,ht=110){if(!h||h.length<2)return'';const v=h.map(x=>x[1]),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1;
  const p=v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(ht-4-(y-mn)/r*(ht-8)).toFixed(1)}`).join(' ');
@@ -28,7 +28,7 @@ async function load(){let d;try{d=await (await fetch('data.json?'+Date.now())).j
  const H=26,D=96; let s='';
  s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE)</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
  <div><div class="big">${f(a.price,1)}p</div><div>${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
- <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span>vs copper 1M</span><b>${pc(a.rel_m1)}</b><span>vs copper YTD</span><b>${pc(a.rel_ytd)}</b></div>
+ <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b></div>
  <div style="flex:1;min-width:260px">${spark(a.hist)}</div></div></section>`;
  s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG ($/lb)</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
  <span>COMEX ($/t)</span><b>${f(c.comex_t,0)}</b><span>COMEX (£/t)</span><b>${f(c.comex_gbp_t,0)}</b>
