@@ -143,6 +143,14 @@ def inventories():
     if not out: raise RuntimeError("no inventory sources")
     return out
 
+def rns():
+    t = get("https://www.investegate.co.uk/company/ATYM").text
+    rows = re.findall(r"<td>(\d{1,2} \w{3} \d{4})</td>\s*<td>([\d:]+ [AP]M)</td>.*?class=\"announcement-link\" href=\"([^\"]+)\">([^<]+)</a>", t, re.S)
+    items = [{"date": dt.datetime.strptime(d, "%d %b %Y").strftime("%Y-%m-%d"), "time": dt.datetime.strptime(tm, "%I:%M %p").strftime("%H:%M"),
+              "link": l, "title": html.unescape(x).strip()} for d, tm, l, x in rows[:8]]
+    if not items: raise RuntimeError("no RNS rows")
+    return {"items": items}
+
 PEERS = [("FCX", "Freeport-McMoRan"), ("ANTO.L", "Antofagasta"), ("SCCO", "Southern Copper"), ("FM.TO", "First Quantum"),
          ("LUN.TO", "Lundin Mining"), ("CS.TO", "Capstone Copper"), ("HBM", "Hudbay"), ("CAML.L", "Central Asia Metals"), ("SFR.AX", "Sandfire")]
 def peers():
@@ -180,7 +188,7 @@ def news():
     if not out: raise RuntimeError("no news")
     return {"items": out[:15]}
 
-for name, fn in [("atym", atym), ("fx", fx), ("copper", copper), ("gas", gas), ("power", power), ("ttf", ttf), ("diesel", diesel),
+for name, fn in [("atym", atym), ("fx", fx), ("copper", copper), ("gas", gas), ("power", power), ("ttf", ttf), ("rns", rns), ("diesel", diesel),
                  ("inventories", inventories), ("peers", peers), ("news", news)]:
     section(name, fn)
 

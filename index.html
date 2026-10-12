@@ -27,9 +27,10 @@ async function load(){let d;try{d=await (await fetch('data.json?'+Date.now())).j
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
  s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE)</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
- <div><div class="big">${f(a.price,1)}p</div><div>${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
+ <div><div class="big">${f(a.price,1)}p</div><div><span class="mut">last session</span> ${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
  <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b></div>
  <div style="flex:1;min-width:260px">${spark(a.hist)}</div></div></section>`;
+ s+=`<section class="t wide"><h2>ATYM RNS <span class="mut">(Investegate, times UK)</span></h2><table>${((d.rns||{}).items||[]).map(r=>`<tr><td><a href="${r.link}" target="_blank" rel="noopener">${r.title.replace(/</g,'&lt;')}</a>${r.date==new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'})?'<span class="badge" style="background:#2e7d32">today</span>':''}</td><td class="mut">${r.date} ${r.time}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${asof(d.rns,H)}</section>`;
  s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG ($/lb)</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
  <span>COMEX ($/t)</span><b>${f(c.comex_t,0)}</b><span>COMEX (£/t)</span><b>${f(c.comex_gbp_t,0)}</b>
  <span>LME cash official ($/t)</span><b>${f(c.lme_cash,0)}</b><span>LME 3M ($/t)</span><b>${f(c.lme_3m,0)}</b>
