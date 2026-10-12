@@ -79,9 +79,22 @@ async function slow() {
 }
 
 const RANGES = { "1d": ["1d", "5m", 120], "1mo": ["1mo", "1d", 3600], "3mo": ["3mo", "1d", 3600], "6mo": ["6mo", "1d", 3600], "1y": ["1y", "1d", 3600], "5y": ["5y", "1wk", 3600] };
-async function chart(r) {
+const SYMS = ["ATYM.L", "HG=F"];
+async function lme(r) {
+  const yrs = { "1mo": 1, "3mo": 1, "6mo": 1, "1y": 2, "5y": 6 }[r], Y = new Date().getUTCFullYear(), M = {};
+  "January February March April May June July August September October November December".split(" ").forEach((m, i) => M[m] = i);
+  const pages = await Promise.all([...Array(yrs).keys()].map(k => get(`https://www.westmetall.com/en/markdaten.php?action=table&field=LME_Cu_cash${k ? "&year=" + (Y - k) : ""}`).then(x => x.text()).catch(() => "")));
+  const pts = [];
+  for (const t of pages) for (const m of t.matchAll(/<td[^>]*>(\d{2})\. (\w+) (\d{4})<\/td>\s*<td[^>]*>([\d,.]+)<\/td>/g))
+    pts.push([Date.UTC(+m[3], M[m[2]], +m[1], 12) / 1000, +m[4].replace(/,/g, "")]);
+  const days = { "1mo": 31, "3mo": 92, "6mo": 183, "1y": 366, "5y": 1827 }[r], cut = Date.now() / 1000 - days * 86400;
+  const out = [...new Map(pts.filter(p => p[0] >= cut).map(p => [p[0], p])).values()].sort((a, b) => a[0] - b[0]);
+  if (!out.length) throw new Error("no LME rows");
+  return { range: r, pts: out, first: out[0][0], asof: iso(out.at(-1)[0] * 1000), ok: true };
+}
+async function chart(r, sym = "ATYM.L") {
   const [range, iv] = RANGES[r];
-  const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/ATYM.L?range=${range}&interval=${iv}`)).json();
+  const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${iv}`)).json();
   const res = j.chart.result[0], q = res.indicators.quote[0].close;
   const pts = (res.timestamp || []).map((t, i) => [t, q[i]]).filter(p => p[1] != null).map(p => [p[0], Math.round(p[1] * 100) / 100]);
   if (!pts.length) throw new Error("no points");
@@ -96,7 +109,8 @@ export default {
     if (origin && !allowed(origin)) return new Response("forbidden", { status: 403 });
     let route = { "/prices": [prices, 120], "/slow": [slow, 600] }[url.pathname];
     let ck = url.pathname;
-    if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r]) { route = [() => chart(r), RANGES[r][2]]; ck += "?range=" + r; } }
+    if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo", s = url.searchParams.get("symbol") || "ATYM.L"; if (RANGES[r] && SYMS.includes(s)) { route = [() => chart(r, s), RANGES[r][2]]; ck += "?range=" + r + "&symbol=" + s; } }
+    if (url.pathname === "/lme") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r] && r !== "1d") { route = [() => lme(r), 3600]; ck += "?range=" + r; } }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
     let res = await cache.match(key);

@@ -38,6 +38,32 @@ document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closes
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#sp'))cxMove(e)});
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,e=>{if(e.pointerType!=='mouse')cxHide()}));
 document.addEventListener('pointerleave',e=>{if(e.target.id==='sp')cxHide()},true);
+let CU='1mo',CUD={};const CRL={'1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
+async function setCU(r){CU=r;const [c,l]=await Promise.all([wget('/chart?symbol=HG%3DF&range='+r),wget('/lme?range='+r)]);
+ CUD={c:(c.pts||[]).map(p=>[p[0],Math.round(p[1]*2204.62262)]),l:l.pts||[]};render()}
+function cuChart(w=560,ht=130){const C=CUD.c||[],Lm=CUD.l||[],all=[...C,...Lm];
+ const rb=Object.entries(CRL).map(([k,lb])=>`<button onclick="setCU('${k}')" style="background:${k===CU?'#b87333':'#2a333d'};color:#e6e6e6;border:0;border-radius:3px;padding:0 5px;margin-left:2px;font-size:10px;cursor:pointer">${lb}</button>`).join('');
+ const lg=`<span style="font-size:11px"><span style="color:#e8a165">━ COMEX</span> &nbsp;<span style="color:#64b5f6">━ LME cash</span></span>`;
+ if(all.length<2)return `<div style="display:flex;justify-content:space-between">${lg}<span>${rb}</span></div><div class="mut">chart unavailable</div>`;
+ const ts=all.map(p=>p[0]),vs=all.map(p=>p[1]),t0=Math.min(...ts),t1=Math.max(...ts),mn=Math.min(...vs),mx=Math.max(...vs),r=mx-mn||1,L=46,B2=14,pw=w-L,ph=ht-B2;
+ const X=t=>L+(t-t0)/((t1-t0)||1)*pw,Y=v=>ph-4-(v-mn)/r*(ph-8),pl=(a,c)=>a.length?`<polyline fill="none" stroke="${c}" stroke-width="1.8" points="${a.map(p=>X(p[0]).toFixed(1)+','+Y(p[1]).toFixed(1)).join(' ')}"/>`:'';
+ const fx=t=>new Date(t*1e3).toLocaleDateString('en-GB',{day:'2-digit',month:'short',...(['1y','5y'].includes(CU)?{year:'2-digit'}:{}),timeZone:'Europe/London'});
+ const yl=[mx,(mn+mx)/2,mn].map((y,i)=>`<text x="${L-4}" y="${(4+i*(ph-8)/2+3).toFixed(1)}" text-anchor="end">${f(y,0)}</text>`).join('');
+ const xl=[0,.5,1].map(q=>`<text x="${(L+q*pw).toFixed(1)}" y="${ht-2}" text-anchor="${q?q<1?'middle':'end':'start'}">${fx(t0+q*(t1-t0))}</text>`).join('');
+ window.CP={C,Lm,t0,t1,X,Y,w,L,pw,ph};
+ const lmeNote=Lm.length&&Lm[0][0]>t0+20*86400?`<span class="mut"> · LME history from ${fx(Lm[0][0])}</span>`:(!Lm.length?'<span class="mut"> · LME history unavailable</span>':'');
+ return `<div style="display:flex;justify-content:space-between;margin-bottom:2px">${lg}<span>${rb}</span></div><svg id="cp" viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;font:10px system-ui;fill:#8a96a3;touch-action:pan-y">${pl(C,'#e8a165')}${pl(Lm,'#64b5f6')}${yl}${xl}<g id="cpx" style="display:none;pointer-events:none"><line y1="0" y2="${ph}" stroke="#8a96a3" stroke-width="1"/><circle r="3" fill="#e8a165" stroke="#fff" stroke-width=".8"/><circle r="3" fill="#64b5f6" stroke="#fff" stroke-width=".8"/><rect rx="3" height="16" fill="#0f1419" stroke="#b87333" stroke-width=".8"/><text fill="#e6e6e6"></text></g></svg><div class="mut">COMEX daily ${CU==='5y'?'(weekly)':''} from Yahoo · LME cash official from Westmetall${lmeNote}</div>`}
+function cpMove(e){const s=document.getElementById('cp'),S=window.CP;if(!s||!S)return;const b=s.getBoundingClientRect(),xv=(e.clientX-b.left)/b.width*S.w,t=S.t0+(xv-S.L)/S.pw*(S.t1-S.t0);
+ const near=a=>a.length?a.reduce((p,q)=>Math.abs(q[0]-t)<Math.abs(p[0]-t)?q:p):null,c=near(S.C),l=near(S.Lm),g=s.querySelector('#cpx'),ref=c||l;g.style.display='';
+ const [ln,c1,c2,rc,tx]=g.children,x=S.X(ref[0]);ln.setAttribute('x1',x);ln.setAttribute('x2',x);
+ [[c1,c],[c2,l]].forEach(([el,p])=>{el.style.display=p?'':'none';if(p){el.setAttribute('cx',S.X(p[0]));el.setAttribute('cy',S.Y(p[1]))}});
+ tx.textContent=new Date(ref[0]*1e3).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Europe/London'})+' · COMEX '+(c?f(c[1],0):'–')+' · LME '+(l?f(l[1],0):'–');
+ const tw=tx.getComputedTextLength()+10,lx=Math.min(Math.max(x-tw/2,S.L),S.w-tw);rc.setAttribute('x',lx);rc.setAttribute('width',tw);rc.setAttribute('y',0);tx.setAttribute('x',lx+5);tx.setAttribute('y',11)}
+function cpHide(){const g=document.querySelector('#cp #cpx');if(g)g.style.display='none'}
+document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closest('#cp'))cpMove(e);else if(e.pointerType==='mouse')cpHide()});
+document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#cp'))cpMove(e)});
+['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,e=>{if(e.pointerType!=='mouse')cpHide()}));
+document.addEventListener('pointerleave',e=>{if(e.target.id==='cp')cpHide()},true);
 let CR='1mo',CHD=null;const RL={'1d':'1D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
 async function setR(r){CR=r;const j=await wget('/chart?range='+r);CHD=j.pts||null;render()}
 const EX={LSE:['Europe/London',480,990],NYSE:['America/New_York',570,960],TSX:['America/Toronto',570,960],ASX:['Australia/Sydney',600,960]};
@@ -81,9 +107,10 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  </div></section>`;
  const inv=(k,u)=>iv[k]?`<b>${f(iv[k].t,0)} t${iv[k].stale?'<span class="badge">stale</span>':''}</b><span class="mut">${iv[k].date||''}</span>`:'<b class="mut">unavailable</b><span></span>';
  s+=`<section class="t"><h2>Copper inventories</h2><div class="kv" style="grid-template-columns:1fr auto auto"><span>LME</span>${inv('lme')}<span>COMEX</span>${inv('comex')}<span>SHFE (weekly)</span>${inv('shfe')}</div><div class="mut">Best-effort, daily/weekly.</div></section>`;
+ s+=`<section class="t"><h2>Copper price: COMEX vs LME ($/t)</h2>${cuChart()}</section>`;
  s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span> ${mk(exOf(r.sym))}${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td></tr>`).join('')}
  <tr><td><b>ATYM.L</b> ${mk('LSE')}</td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td></tr></table>${asof(d.peers,H)}</section>`;
  s+=`<section class="t wide"><h2>News</h2><ul>${((d.news||{}).items||[]).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${n.ts?new Date(n.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;
  $('#m').innerHTML=s}
-setR('1mo');setInterval(()=>CR==='1d'&&setR('1d'),2*60*1000);load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
+setR('1mo');setCU('1mo');setInterval(()=>CR==='1d'&&setR('1d'),2*60*1000);load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
 </script></body></html>
