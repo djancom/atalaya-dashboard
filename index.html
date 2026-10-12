@@ -10,10 +10,8 @@ main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1
 .badge{background:#c62828;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px;margin-left:6px}
 table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right;border-bottom:1px solid #2a333d}td:first-child,th:first-child{text-align:left}
 .kv{display:grid;grid-template-columns:1fr auto;gap:3px 12px}a{color:#9cc4ff;text-decoration:none}li{margin:4px 0}ul{padding-left:18px;margin:0}
-.xb{background:#2a333d;padding:6px 10px;border-radius:6px}.xb:hover{background:#3a4652}#rb button{background:#2a333d;color:#e6e6e6;border:0;border-radius:4px;padding:4px 10px;margin-right:4px;cursor:pointer}#rb button.on{background:#b87333}.u-legend{color:#e6e6e6}</style>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css"><script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script></head><body>
+.xb{background:#2a333d;padding:6px 10px;border-radius:6px}.xb:hover{background:#3a4652}</style></head><body>
 <header><h1>Atalaya Mining &middot; Copper Dashboard</h1><span class="mut" id="gen"></span></header>
-<section class="t" style="margin:12px 12px 0"><h2>ATYM.L price (pence)</h2><div id="rb"></div><div id="ch" style="min-height:260px"></div><div class="mut" id="chs"></div></section>
 <main id="m">Loading…</main>
 <section class="t" style="margin:0 12px"><h2>On X</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Atalaya%20Mining%22&amp;f=live">&quot;Atalaya Mining&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%24ATYM%20OR%20ATYM.L&amp;f=live">$ATYM OR ATYM.L</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Touro%20copper%20OR%20%22Proyecto%20Touro%22&amp;f=live">Touro copper OR &quot;Proyecto Touro&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Riotinto%20copper%20Atalaya&amp;f=live">Riotinto copper Atalaya</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Masa%20Valverde%22&amp;f=live">&quot;Masa Valverde&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=E-LIX%20Atalaya&amp;f=live">E-LIX Atalaya</a></div><div class="mut">Opens X search, latest first.</div></section>
 <footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
@@ -22,9 +20,15 @@ const $=s=>document.querySelector(s),f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v
 const pp=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v,1)} pp</span>`;const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
 function asof(o,maxH){if(!o||o.unavailable)return'<div class="mut">unavailable</div>';const t=new Date(o.asof);let h=0;for(let x=+t;x<Date.now();x+=36e5){const w=new Date(x).getUTCDay();if(w&&w<6)h++}/* weekday hours only */
  return `<div class="mut">as of ${isNaN(t)?o.asof:t.toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})}${(h>maxH||o.ok===false)?'<span class="badge">stale</span>':''}</div>`}
-function spark(h,w=560,ht=110){if(!h||h.length<2)return'';const v=h.map(x=>x[1]),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1;
- const p=v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(ht-4-(y-mn)/r*(ht-8)).toFixed(1)}`).join(' ');
- return `<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px"><polyline fill="none" stroke="#e8a165" stroke-width="2" points="${p}"/></svg><div class="mut">1M range ${f(mn)} – ${f(mx)}</div>`}
+function spark(h,w=560,ht=110){if(!h||h.length<2)return'';const v=h.map(x=>x[1]),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1,L=38,B2=14,pw=w-L,ph=ht-B2;
+ const p=v.map((y,i)=>`${(L+i/(v.length-1)*pw).toFixed(1)},${(ph-4-(y-mn)/r*(ph-8)).toFixed(1)}`).join(' ');
+ const intra=CR==='1d',fx=t=>new Date(t*1e3).toLocaleString('en-GB',intra?{hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'}:{day:'2-digit',month:'short',...(['1y','5y'].includes(CR)?{year:'2-digit'}:{}),timeZone:'Europe/London'});
+ const yl=[mx,(mn+mx)/2,mn].map((y,i)=>`<text x="${L-4}" y="${(4+i*(ph-8)/2+3).toFixed(1)}" text-anchor="end">${f(y,0)}p</text>`).join('');
+ const xl=[0,.5,1].map(q=>{const i=Math.round(q*(h.length-1));return `<text x="${(L+q*pw).toFixed(1)}" y="${ht-2}" text-anchor="${q?q<1?'middle':'end':'start'}">${fx(h[i][0])}</text>`}).join('');
+ const rb=Object.entries(RL).map(([k,lb])=>`<button data-r="${k}" onclick="setR('${k}')" style="background:${k===CR?'#b87333':'#2a333d'};color:#e6e6e6;border:0;border-radius:3px;padding:0 5px;margin-left:2px;font-size:10px;cursor:pointer">${lb}</button>`).join('');
+ return `<div style="text-align:right;margin-bottom:2px">${rb}</div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;font:10px system-ui;fill:#8a96a3"><polyline fill="none" stroke="#e8a165" stroke-width="2" points="${p}"/>${yl}${xl}</svg><div class="mut">${RL[CR]} range ${f(mn)} – ${f(mx)}</div>`}
+let CR='1mo',CHD=null;const RL={'1d':'1D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
+async function setR(r){CR=r;const j=await wget('/chart?range='+r);CHD=j.pts||null;render()}
 const EX={LSE:['Europe/London',480,990],NYSE:['America/New_York',570,960],TSX:['America/Toronto',570,960],ASX:['Australia/Sydney',600,960]};
 function tz(z){const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:z,weekday:'short',hour:'numeric',minute:'numeric',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return [p.weekday,+p.hour*60+ +p.minute]}
 function isOpen(e){if(e==='CME'){const [d,m]=tz('America/New_York');if(d==='Sat')return false;if(d==='Sun')return m>=1080;if(d==='Fri')return m<1020;return m<1020||m>=1080}
@@ -48,7 +52,7 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE) ${mk('LSE')}</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
  <div><div class="big">${f(a.price,1)}p</div><div><span class="mut">last session</span> ${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
  <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b></div>
- </div></section>`;
+ <div style="flex:1;min-width:260px">${spark(CHD||(CR==='1mo'?a.hist:null))}</div></div></section>`;
  s+=`<section class="t wide"><h2>ATYM RNS <span class="mut">(Investegate, times UK)</span></h2><table>${((d.rns||{}).items||[]).map(r=>`<tr><td><a href="${r.link}" target="_blank" rel="noopener">${r.title.replace(/</g,'&lt;')}</a>${r.date==new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'})?'<span class="badge" style="background:#2e7d32">today</span>':''}</td><td class="mut">${r.date} ${r.time}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${asof(d.rns,H)}</section>`;
  s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG ($/lb) ${mk('CME')}</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
  <span>COMEX ($/t)</span><b>${f(c.comex_t,0)}</b><span>COMEX (£/t)</span><b>${f(c.comex_gbp_t,0)}</b>
@@ -70,19 +74,5 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  <tr><td><b>ATYM.L</b> ${mk('LSE')}</td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td></tr></table>${asof(d.peers,H)}</section>`;
  s+=`<section class="t wide"><h2>News</h2><ul>${((d.news||{}).items||[]).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${n.ts?new Date(n.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;
  $('#m').innerHTML=s}
-let CR='1mo',U=null;const RL={'1d':'1D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
-$('#rb').innerHTML=Object.entries(RL).map(([k,v])=>`<button data-r="${k}">${v}</button>`).join('');
-$('#rb').onclick=e=>{if(e.target.dataset.r){CR=e.target.dataset.r;drawChart()}};
-async function drawChart(){document.querySelectorAll('#rb button').forEach(b=>b.classList.toggle('on',b.dataset.r===CR));
- let j=await wget('/chart?range='+CR);if(!j.pts&&CR==='1mo'&&B&&B.atym)j={pts:B.atym.hist,asof:B.atym.asof};
- if(!j.pts){$('#chs').textContent='chart unavailable';return}
- const intra=CR==='1d',x=j.pts.map(p=>p[0]),y=j.pts.map(p=>p[1]),el=$('#ch'),W0=el.clientWidth||600;
- const fmtT=t=>new Date(t*1e3).toLocaleString('en-GB',intra?{hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'}:{day:'2-digit',month:'short',year:CR==='5y'||CR==='1y'?'2-digit':undefined,timeZone:'Europe/London'});
- const opts={width:W0,height:260,legend:{show:true},cursor:{y:false},series:[{value:(u,t)=>t==null?'':new Date(t*1e3).toLocaleString('en-GB',{dateStyle:'medium',timeStyle:intra?'short':undefined,timeZone:'Europe/London'})},{label:'ATYM (p)',stroke:'#e8a165',width:2,fill:'rgba(232,161,101,.08)',value:(u,v)=>v==null?'':f(v,1)+'p'}],
-  axes:[{stroke:'#8a96a3',grid:{stroke:'#2a333d'},values:(u,ts)=>ts.map(fmtT)},{stroke:'#8a96a3',grid:{stroke:'#2a333d'},size:60,values:(u,vs)=>vs.map(v=>f(v,0)+'p')}],scales:{x:{time:false}}};
- if(intra)opts.scales.x.time=false;
- U&&U.destroy();el.innerHTML='';U=new uPlot(opts,[x,y],el);$('#chs').textContent=`${RL[CR]} · ${j.interval||''} bars · as of ${new Date(j.asof).toLocaleString('en-GB',{timeZone:'Europe/London',dateStyle:'short',timeStyle:'short'})} UK`}
-window.addEventListener('resize',()=>U&&U.setSize({width:$('#ch').clientWidth,height:260}));
-drawChart();setInterval(()=>CR==='1d'&&drawChart(),2*60*1000);
-load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
+setR('1mo');setInterval(()=>CR==='1d'&&setR('1d'),2*60*1000);load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
 </script></body></html>
