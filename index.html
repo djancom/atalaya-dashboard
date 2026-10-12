@@ -14,7 +14,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right
 <header><h1>Atalaya Mining &middot; Copper Dashboard</h1><span class="mut" id="gen"></span></header>
 <main id="m">Loading…</main>
 <section class="t" style="margin:0 12px"><h2>On X</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Atalaya%20Mining%22&amp;f=live">&quot;Atalaya Mining&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%24ATYM%20OR%20ATYM.L&amp;f=live">$ATYM OR ATYM.L</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Touro%20copper%20OR%20%22Proyecto%20Touro%22&amp;f=live">Touro copper OR &quot;Proyecto Touro&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Riotinto%20copper%20Atalaya&amp;f=live">Riotinto copper Atalaya</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Masa%20Valverde%22&amp;f=live">&quot;Masa Valverde&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=E-LIX%20Atalaya&amp;f=live">E-LIX Atalaya</a></div><div class="mut">Opens X search, latest first.</div></section>
-<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; MIBGAS; REE). Not investment advice. Auto-refreshes every 20 min.</footer>
+<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
 <script>
 const $=s=>document.querySelector(s),f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pp=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v,1)} pp</span>`;const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
@@ -23,7 +23,18 @@ function asof(o,maxH){if(!o||o.unavailable)return'<div class="mut">unavailable</
 function spark(h,w=560,ht=110){if(!h||h.length<2)return'';const v=h.map(x=>x[1]),mn=Math.min(...v),mx=Math.max(...v),r=mx-mn||1;
  const p=v.map((y,i)=>`${(i/(v.length-1)*w).toFixed(1)},${(ht-4-(y-mn)/r*(ht-8)).toFixed(1)}`).join(' ');
  return `<svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px"><polyline fill="none" stroke="#e8a165" stroke-width="2" points="${p}"/></svg><div class="mut">1M range ${f(mn)} – ${f(mx)}</div>`}
-async function load(){let d;try{d=await (await fetch('data.json?'+Date.now())).json()}catch(e){$('#m').textContent='Could not load data.json';return}
+const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={};
+const wget=p=>fetch(W+p,{signal:AbortSignal.timeout(15000)}).then(r=>r.ok?r.json():{}).catch(()=>({}));
+const newer=(a,b)=>!a||!b||!a.asof||!b.asof||new Date(b.asof)>=new Date(a.asof);
+function merged(){const d={...B};
+ for(const k of ['atym','fx','ttf','peers','rns','news']){const v=P[k]||S[k];if(v&&newer(d[k],v))d[k]=v}
+ if(P.copper&&newer(d.copper,P.copper)){const c={...d.copper,...P.copper};if(c.lme_cash)c.spread_t=Math.round((c.comex_t-c.lme_cash)*10)/10;d.copper=c}
+ if(P.peer_rows&&d.peers){const m=Object.fromEntries(P.peer_rows.map(r=>[r.sym,r]));d.peers={...d.peers,rows:d.peers.rows.map(r=>m[r.sym]||r)}}
+ const g=[B.generated,P.generated,S.generated].filter(Boolean).sort().pop();d.generated=g;return d}
+async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
+async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x)]);render()}
+function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
  s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE)</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
@@ -51,5 +62,5 @@ async function load(){let d;try{d=await (await fetch('data.json?'+Date.now())).j
  <tr><td><b>ATYM.L</b></td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td></tr></table>${asof(d.peers,H)}</section>`;
  s+=`<section class="t wide"><h2>News</h2><ul>${((d.news||{}).items||[]).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${n.ts?new Date(n.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;
  $('#m').innerHTML=s}
-load();setInterval(load,20*60*1000);
+load();setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>base().then(render),20*60*1000);
 </script></body></html>
