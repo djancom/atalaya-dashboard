@@ -2,7 +2,7 @@
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" };
 const LB = 2204.62262;
 const PEERS = [["FCX","Freeport-McMoRan"],["ANTO.L","Antofagasta"],["SCCO","Southern Copper"],["FM.TO","First Quantum"],["LUN.TO","Lundin Mining"],["CS.TO","Capstone Copper"],["HBM","Hudbay"],["CAML.L","Central Asia Metals"],["SFR.AX","Sandfire"]];
-const MKTS = [["^FTMC", "FTSE 250", "LSE"], [null, "FTSE 350 Mining", "LSE"], ["^GSPC", "S&P 500", "NYSE"], ["^STOXX", "Stoxx 600", "XETRA"], ["^N225", "Nikkei 225", "TSE"], ["^HSI", "Hang Seng", "HKEX"],
+const MKTS = [["^FTMC", "FTSE 250", "LSE"], ["BRWM.L", "Miners (BRWM)", "LSE"], ["COPX", "Cu miners (COPX)", "NYSE"], ["^GSPC", "S&P 500", "NYSE"], ["^STOXX", "Stoxx 600", "XETRA"], ["^N225", "Nikkei 225", "TSE"], ["^HSI", "Hang Seng", "HKEX"],
   ["GC=F", "Gold ($/oz)", "CME"], ["SI=F", "Silver ($/oz)", "CME"], ["BZ=F", "Brent ($/bbl)", "CME"]];
 const FEEDS = ['"Atalaya Mining"','Riotinto copper','"Proyecto Touro"','"Masa Valverde"','"E-LIX"','"copper price"'];
 const iso = d => new Date(d).toISOString().replace(/\.\d+Z$/, "Z");
