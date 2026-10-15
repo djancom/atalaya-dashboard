@@ -118,4 +118,5 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  s+=`<section class="t wide"><h2>News</h2><ul>${((d.news||{}).items||[]).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${n.ts?new Date(n.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;
  $('#m').innerHTML=s}
 setR('1mo');setCU('1mo');setInterval(()=>CR==='1d'&&setR('1d'),2*60*1000);load();setInterval(render,60000);setInterval(refreshP,2*60*1000);setInterval(refreshS,10*60*1000);setInterval(()=>Promise.all([base(),wget('/daily').then(x=>DY=x)]).then(render),20*60*1000);
-</script></body></html>
+</script><footer class="mut" style="text-align:center;padding:16px 12px 24px">Independent shareholder-built dashboard. Not affiliated with or endorsed by Atalaya Mining. Data from free public sources, may be delayed or inaccurate. Not investment advice.</footer>
+</body></html>
