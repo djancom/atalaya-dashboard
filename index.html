@@ -44,7 +44,7 @@ async function setCU(r){CU=r;const [c,l]=await Promise.all([wget('/chart?symbol=
  CUD={c:(c.pts||[]).map(p=>[p[0],Math.round(p[1]*2204.62262)]),l:l.pts||[]};render()}
 function cuChart(w=560,ht=130){const C=CUD.c||[],Lm=CUD.l||[],all=[...C,...Lm];
  const rb=Object.entries(CRL).map(([k,lb])=>`<button onclick="setCU('${k}')" style="background:${k===CU?'#b87333':'#2a333d'};color:#e6e6e6;border:0;border-radius:3px;padding:0 5px;margin-left:2px;font-size:10px;cursor:pointer">${lb}</button>`).join('');
- const lg=`<span style="font-size:11px"><span style="color:#e8a165">━ COMEX</span> &nbsp;<span style="color:#64b5f6">━ LME cash</span></span>`;
+ const lg=`<span style="font-size:11px"><span style="color:#e8a165">━ COMEX front-month</span> &nbsp;<span style="color:#64b5f6">━ LME cash</span></span>`;
  if(all.length<2)return `<div style="display:flex;justify-content:space-between">${lg}<span>${rb}</span></div><div class="mut">chart unavailable</div>`;
  const ts=all.map(p=>p[0]),vs=all.map(p=>p[1]),t0=Math.min(...ts),t1=Math.max(...ts),mn=Math.min(...vs),mx=Math.max(...vs),r=mx-mn||1,L=46,B2=14,pw=w-L,ph=ht-B2;
  const X=t=>L+(t-t0)/((t1-t0)||1)*pw,Y=v=>ph-4-(v-mn)/r*(ph-8),pl=(a,c)=>a.length?`<polyline fill="none" stroke="${c}" stroke-width="1.8" points="${a.map(p=>X(p[0]).toFixed(1)+','+Y(p[1]).toFixed(1)).join(' ')}"/>`:'';
@@ -95,10 +95,10 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b></div>
  <div style="flex:1;min-width:260px">${spark(CHD||(CR==='1mo'?a.hist:null))}</div></div></section>`;
  s+=`<section class="t wide"><h2>ATYM RNS <span class="mut">(Investegate, times UK)</span></h2><table>${((d.rns||{}).items||[]).map(r=>`<tr><td><a href="${r.link}" target="_blank" rel="noopener">${r.title.replace(/</g,'&lt;')}</a>${r.date==new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'})?'<span class="badge" style="background:#2e7d32">today</span>':''}</td><td class="mut">${r.date} ${r.time}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${asof(d.rns,H)}</section>`;
- s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG ($/lb) ${mk('CME')}</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
- <span>COMEX ($/t)</span><b>${f(c.comex_t,0)}</b>
+ s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG front-month fut. ($/lb) ${mk('CME')}</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
+ <span>COMEX front-month ($/t)</span><b>${f(c.comex_t,0)}</b>
  <span>LME cash official ($/t)</span><b>${f(c.lme_cash,0)}</b><span>LME 3M ($/t)</span><b>${f(c.lme_3m,0)}</b>
- <span>COMEX − LME ($/t)</span><b>${f(c.spread_t,0)}</b></div>${asof(c,H)}<div class="mut">LME: ${c.lme_date||'–'} (end of day)</div></section>`;
+ <span title="COMEX front-month futures minus LME cash; partly a futures-vs-spot timing gap">COMEX fut. − LME cash ($/t)</span><b>${f(c.spread_t,0)}</b></div>${asof(c,H)}<div class="mut">LME: ${c.lme_date||'–'} (end of day)</div></section>`;
  s+=`<section class="t"><h2>FX</h2><div class="kv"><span>GBP/USD</span><b>${f(x.gbpusd,4)} ${pc(x.gbpusd_chg_pct)}</b><span>EUR/USD</span><b>${f(x.eurusd,4)} ${pc(x.eurusd_chg_pct)}</b></div>${asof(x,H)}</section>`;
  const t=d.ttf||{},ds=d.diesel||{},ok=o=>o&&!o.unavailable;
  const row=(lbl,v,freq,o,maxH,extra='')=>`<span>${lbl} <span class="mut">(${freq})</span></span><b>${ok(o)?v:'<span class="mut">unavailable</span>'}</b><span class="mut" style="grid-column:1/-1;margin-top:-3px">${extra}${ok(o)?asof(o,maxH).replace(/<\/?div[^>]*>/g,''):''}</span>`;
