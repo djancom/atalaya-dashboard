@@ -2,6 +2,8 @@
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" };
 const LB = 2204.62262;
 const PEERS = [["FCX","Freeport-McMoRan"],["ANTO.L","Antofagasta"],["SCCO","Southern Copper"],["FM.TO","First Quantum"],["LUN.TO","Lundin Mining"],["CS.TO","Capstone Copper"],["HBM","Hudbay"],["CAML.L","Central Asia Metals"],["SFR.AX","Sandfire"]];
+const MKTS = [["^FTMC", "FTSE 250", "LSE"], [null, "FTSE 350 Mining", "LSE"], ["^GSPC", "S&P 500", "NYSE"], ["^STOXX", "Stoxx 600", "XETRA"], ["^N225", "Nikkei 225", "TSE"], ["^HSI", "Hang Seng", "HKEX"],
+  ["GC=F", "Gold ($/oz)", "CME"], ["SI=F", "Silver ($/oz)", "CME"], ["BZ=F", "Brent ($/bbl)", "CME"]];
 const FEEDS = ['"Atalaya Mining"','Riotinto copper','"Proyecto Touro"','"Masa Valverde"','"E-LIX"','"copper price"'];
 const iso = d => new Date(d).toISOString().replace(/\.\d+Z$/, "Z");
 const allowed = o => /^https:\/\/djancom\.github\.io$/.test(o) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
@@ -26,7 +28,7 @@ async function yahoo(sym) {
 const safe = p => p.catch(e => ({ ok: false, error: String(e).slice(0, 120) }));
 
 async function prices() {
-  const syms = ["ATYM.L", "HG=F", "GBPUSD=X", "EURUSD=X", "TTF=F", ...PEERS.map(p => p[0])];
+  const syms = ["ATYM.L", "HG=F", "GBPUSD=X", "EURUSD=X", "TTF=F", ...PEERS.map(p => p[0]), ...MKTS.filter(m => m[0]).map(m => m[0])];
   const r = await Promise.all(syms.map(s => safe(yahoo(s))));
   const Y = Object.fromEntries(syms.map((s, i) => [s, r[i]]));
   const a = Y["ATYM.L"], hg = Y["HG=F"], g = Y["GBPUSD=X"], e = Y["EURUSD=X"], out = { generated: iso(Date.now()) };
@@ -35,6 +37,7 @@ async function prices() {
   if (hg.ok) out.copper = { comex_lb: hg.price, comex_t: Math.round(hg.price * LB * 10) / 10, comex_gbp_t: g.ok ? Math.round(hg.price * LB / g.price * 10) / 10 : null,
     comex_chg_pct: hg.chg_pct, comex_m1: hg.m1, comex_ytd: hg.ytd, asof: hg.asof, hist: hg.hist };
   if (a.ok && hg.ok) { a.rel_m1 = Math.round((a.m1 - hg.m1) * 100) / 100; a.rel_ytd = Math.round((a.ytd - hg.ytd) * 100) / 100; }
+  out.markets = { rows: MKTS.map(([s, n, ex]) => s && Y[s].ok ? { sym: s, name: n, ex, price: Y[s].price, chg_pct: Y[s].chg_pct, asof: Y[s].asof } : { sym: s, name: n, ex, unavailable: true }), asof: out.generated, ok: true };
   if (Y["TTF=F"].ok) { const t = Y["TTF=F"]; delete t.hist; out.ttf = t; }
   const rows = PEERS.map(([s, n]) => Y[s].ok ? (delete Y[s].hist, { ...Y[s], sym: s, name: n }) : null);
   if (rows.every(Boolean)) out.peers = { rows, asof: out.generated, ok: true };
