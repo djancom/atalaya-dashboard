@@ -219,7 +219,7 @@ export default {
     }
     let route = { "/prices": [prices, 120], "/slow": [slow, 600] }[url.pathname];
     let ck = url.pathname;
-    if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo", s = url.searchParams.get("symbol") || "ATYM.L"; if (RANGES[r] && SYMS.includes(s)) { route = [() => chart(r, s), RANGES[r][2]]; ck += "?range=" + r + "&symbol=" + s; } }
+    if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo", s = url.searchParams.get("symbol") || "ATYM.L"; if (RANGES[r] && SYMS.includes(s)) { route = [() => chart(r, s), RANGES[r][2]]; ck += "?v=2&range=" + r + "&symbol=" + s; } }
     if (url.pathname === "/lme") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r] && r !== "1d") { route = [() => lme(r), 3600]; ck += "?range=" + r; } }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
