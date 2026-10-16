@@ -67,7 +67,7 @@ document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closes
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,e=>{if(e.pointerType!=='mouse')cpHide()}));
 document.addEventListener('pointerleave',e=>{if(e.target.id==='cp')cpHide()},true);
 let CR='1mo',CHD=null;const RL={'1d':'1D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
-async function setR(r){CR=r;const j=await wget('/chart?range='+r);CHD=j.pts||null;render()}
+async function setR(r){CR=r;const j=await wget('/chart?v=2&range='+r);CHD=j.pts||null;render()}
 const EX={LSE:['Europe/London',480,990],NYSE:['America/New_York',570,960],TSX:['America/Toronto',570,960],ASX:['Australia/Sydney',600,960],XETRA:['Europe/Berlin',540,1050],TSE:['Asia/Tokyo',540,930],HKEX:['Asia/Hong_Kong',570,960]};
 function tz(z){const p=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:z,weekday:'short',hour:'numeric',minute:'numeric',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));return [p.weekday,+p.hour*60+ +p.minute]}
 function isOpen(e){if(e==='CME'){const [d,m]=tz('America/New_York');if(d==='Sat')return false;if(d==='Sun')return m>=1080;if(d==='Fri')return m<1020;return m<1020||m>=1080}
