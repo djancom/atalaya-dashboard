@@ -98,8 +98,8 @@ async function lme(r) {
 async function chart(r, sym = "ATYM.L") {
   const [range, iv] = RANGES[r];
   const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${iv}`)).json();
-  const res = j.chart.result[0], q = res.indicators.quote[0].close;
-  const pts = (res.timestamp || []).map((t, i) => [t, q[i]]).filter(p => p[1] != null).map(p => [p[0], Math.round(p[1] * 100) / 100]);
+  const res = j.chart.result[0], q = res.indicators.quote[0].close, vo = res.indicators.quote[0].volume || [];
+  const pts = (res.timestamp || []).map((t, i) => [t, q[i], vo[i] || 0]).filter(p => p[1] != null).map(p => [p[0], Math.round(p[1] * 100) / 100, p[2]]);
   if (!pts.length) throw new Error("no points");
   return { range: r, interval: iv, pts, asof: iso((res.meta.regularMarketTime || pts.at(-1)[0]) * 1000), ok: true };
 }
