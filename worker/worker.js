@@ -159,6 +159,17 @@ async function sPeers(t) {
   out = out.filter(s => { const b = s.split(".")[0].replace(/-.*/, ""); if (seen.has(b)) return false; seen.add(b); return true; });
   return { peers: out.slice(0, 6), industry: ind, asof: iso(Date.now()), ok: true };
 }
+async function sAnalyst(t) {
+  const { H, crumb } = await ycrumb();
+  const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(t)}?modules=financialData,price&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json();
+  const r = j.quoteSummary.result[0], fd = r.financialData || {}, v = x => x && typeof x.raw === "number" ? x.raw : null;
+  const px = v(fd.currentPrice) ?? v(r.price.regularMarketPrice), n = v(fd.numberOfAnalystOpinions);
+  let mean = v(fd.targetMeanPrice), lo = v(fd.targetLowPrice), hi = v(fd.targetHighPrice);
+  if (!mean || !n || !px) return { none: true, asof: iso(Date.now()), ok: true };
+  const k = mean / px > 20 ? 0.01 : mean / px < 0.05 ? 100 : 1;  // guard against pence/pounds mix-ups
+  [mean, lo, hi] = [mean, lo, hi].map(x => x == null ? null : x * k);
+  return { mean, lo, hi, n, px, cur: r.price.currency, key: fd.recommendationKey || null, rmean: v(fd.recommendationMean), asof: iso(Date.now()), ok: true };
+}
 async function sNews(t) {
   const x = await (await get(`https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(t)}&region=US&lang=en-US`)).text();
   const items = (x.match(/<item>[\s\S]*?<\/item>/g) || []).slice(0, 12).map(it => { const g = tag => unesc((it.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) || [, ""])[1]); return { title: g("title"), link: g("link"), ts: (Date.parse(g("pubDate")) || 0) / 1000 }; });
@@ -170,11 +181,12 @@ function sRoute(url) {
   const p = url.pathname, q = url.searchParams, t = (q.get("t") || "").toUpperCase();
   if (p === "/s/search") { const s = (q.get("q") || "").trim().slice(0, 40); return s ? [() => sSearch(s), 86400, "v=2&q=" + s.toLowerCase()] : null; }
   if (p === "/s/quotes") { const l = t.split(",").filter(x => TK.test(x)).slice(0, 12); return l.length ? [() => sQuotes(l), 120, "t=" + l.join(",")] : null; }
-  if (p === "/s/fund") { const l = t.split(",").filter(x => TK.test(x)).slice(0, 12); return l.length ? [() => valFor(l).then(x => ({ ...x, ok: true })), 86400, "t=" + l.join(",")] : null; }
+  if (p === "/s/fund") { const l = t.split(",").filter(x => TK.test(x)).slice(0, 12); return l.length ? [() => valFor(l).then(x => ({ ...x, ok: true })), 86400, "v=4&t=" + l.join(",")] : null; }
   if (!TK.test(t)) return null;
   if (p === "/s/quote") return [() => sQuote(t), 120, "t=" + t];
   if (p === "/s/chart") { const r = q.get("range") || "1mo"; return RANGES[r] ? [() => chart(r, t), RANGES[r][2], "t=" + t + "&r=" + r] : null; }
   if (p === "/s/peers") return [() => sPeers(t), 86400, "v=2&t=" + t];
+  if (p === "/s/analyst") return [() => sAnalyst(t), 86400, "t=" + t];
   if (p === "/s/news") return [() => sNews(t), 600, "t=" + t];
   return null;
 }
@@ -290,13 +302,20 @@ async function ycrumb() {
   if (!crumb || crumb.length > 20 || /[<{ ]/.test(crumb)) throw new Error("no crumb");
   return { H, crumb };
 }
+function localCap(sh, px, qc, ymc) {  // market cap in the trading currency (GBp/ZAc/ILA prices are minor units)
+  const minor = { GBp: "GBP", GBX: "GBP", ZAc: "ZAR", ILA: "ILS" }[qc], cur = minor || qc, div = minor ? 100 : 1;
+  const calc = sh && px ? sh * px / div : null, y = ymc || null;  // Yahoo already reports minor-unit listings in major units
+  // prefer Yahoo's own figure when it agrees with shares x price (within 25%), else the computed one
+  const mc = y && calc ? (Math.abs(y / calc - 1) < 0.25 ? y : calc) : (calc || y);
+  return { mcap: mc ? Math.round(mc) : null, mcap_cur: cur, mcap_yahoo: y ? Math.round(y) : null, mcap_calc: calc ? Math.round(calc) : null };
+}
 const dVal = () => valFor(["ATYM.L", ...PEERS.map(p => p[0])]);
 async function valFor(syms) {
   const { H, crumb } = await ycrumb();
   // Yahoo mixes quote currency (e.g. GBp) and reporting currency (USD/EUR) in its ratios, so recompute everything in USD.
   const fxr = { USD: 1 };
-  await Promise.all(["GBP", "EUR", "CAD", "AUD"].map(async c => { try { fxr[c] = (await yahoo(c + "USD=X")).price; } catch (e) { } }));
-  if (fxr.GBP) fxr.GBp = fxr.GBP / 100;
+  await Promise.all(["GBP", "EUR", "CAD", "AUD", ...(syms.length > 10 || syms.every(x => /^(ATYM\.L|FCX|ANTO\.L|SCCO|FM\.TO|LUN\.TO|CS\.TO|HBM|CAML\.L|SFR\.AX)$/.test(x)) ? [] : ["JPY", "CHF", "HKD", "SEK", "NOK", "DKK", "INR", "KRW", "ZAR", "BRL", "CNY", "ILS"])].map(async c => { try { fxr[c] = (await yahoo(c + "USD=X")).price; } catch (e) { } }));
+  if (fxr.GBP) fxr.GBp = fxr.GBP / 100; if (fxr.ZAR) fxr.ZAc = fxr.ZAR / 100; if (fxr.ILS) fxr.ILA = fxr.ILS / 100;
   const out = {};
   await Promise.all(syms.map(async s => {
     try {
@@ -315,7 +334,7 @@ async function valFor(syms) {
       const tdr = v(sd.trailingAnnualDividendRate);  // reported in the financial currency
       const dy = tdr != null ? tdr * fr / pxU * 100 : null;
       const rd = (x, n) => x == null || !isFinite(x) ? null : Math.round(x * 10 ** n) / 10 ** n;
-      out[s] = { pe: rd(pe, 2), pe_type, ev_ebitda: rd(ev_ebitda, 2), div_yield: rd(dy, 2), qc, fc, mcap_usd: sh ? Math.round(sh * pxU) : null };
+      out[s] = { pe: rd(pe, 2), pe_type, ev_ebitda: rd(ev_ebitda, 2), div_yield: rd(dy, 2), qc, fc, mcap_usd: sh ? Math.round(sh * pxU) : null, ...localCap(sh, px, qc, v(pr.marketCap)) };
     } catch (e) { }
   }));
   if (!Object.keys(out).length) throw new Error("quoteSummary blocked");

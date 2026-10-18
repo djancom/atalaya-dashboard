@@ -29,11 +29,11 @@ const f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minim
 const pc=v=>v==null?'<span class="mut">n/a</span>':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
 const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},SS=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
-const SYM={USD:'$',GBP:'£',EUR:'€',JPY:'¥',CAD:'C$',AUD:'A$',HKD:'HK$',CHF:'CHF '};
+const SYM={USD:'$',GBP:'£',EUR:'€',JPY:'¥',CAD:'C$',AUD:'A$',HKD:'HK$',CHF:'CHF ',INR:'₹',KRW:'₩',CNY:'CN¥',SEK:'SEK ',NOK:'NOK ',DKK:'DKK ',ZAR:'R',BRL:'R$'};
 const money=(v,c,d)=>v==null?'–':c==='GBp'||c==='GBX'?f(v,d??(v<100?2:1))+'p':(SYM[c]||'')+f(v,d??2)+(SYM[c]?'':' '+(c||''));
-const big=v=>v==null?'–':v>=1e12?'$'+f(v/1e12,2)+'tn':v>=1e9?'$'+f(v/1e9,1)+'bn':'$'+f(v/1e6,0)+'m';
+const big=(v,c='USD')=>{if(v==null)return '–';const p=SYM[c]||(c+' ');return v>=1e12?p+f(v/1e12,v>=1e14?0:v>=1e13?1:2)+'tn':v>=1e9?p+f(v/1e9,v>=1e11?0:1)+'bn':p+f(v/1e6,0)+'m'};
 const RL={'1d':'1D','5d':'5D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
-let T=null,Q=null,CR='1mo',CH=null,CMP='',CMPD=null,PEERS=[],PQ={},PF={},NW={},AUTO=[];
+let AN={},T=null,Q=null,CR='1mo',CH=null,CMP='',CMPD=null,PEERS=[],PQ={},PF={},NW={},AUTO=[];
 // ---- search ----
 let acT,acI=-1,acL=[],acSeq=0,acQ='';
 async function search(v){const n=++acSeq;$('#ac').innerHTML='<div class="it mut">Searching…</div>';$('#ac').style.display='block';
@@ -56,7 +56,7 @@ async function go(t){t=t.toUpperCase().trim();acSeq++;acL=[];acI=-1;acQ='';$('#a
  const q=await wget('/s/quote?t='+encodeURIComponent(t));if(T!==t)return;
  if(!q.ok){$('#m').innerHTML=`<section class="t wide"><h2>Not found</h2><div>No data for <b>${esc(t)}</b>. Check the ticker (London listings end in .L, e.g. BP.L) or search by name.</div></section>`;return}
  Q=q;document.title=q.name+' · Stock Dashboard';const r=LS('recent',[]).filter(x=>x!==t);r.unshift(t);SS('recent',r.slice(0,8));drawRec();render();
- setR(CR);wget('/s/news?t='+encodeURIComponent(t)).then(x=>{if(T===t){NW=x;render()}});
+ AN={};wget('/s/analyst?t='+encodeURIComponent(t)).then(x=>{if(T===t){AN=x.ok?x:{failed:true};render()}});setR(CR);wget('/s/news?t='+encodeURIComponent(t)).then(x=>{if(T===t){NW=x;render()}});
  const saved=LS('peers',{})[t];if(saved){PEERS=saved;loadPeers()}else{PEERS=[];wget('/s/peers?t='+encodeURIComponent(t)).then(x=>{if(T!==t)return;AUTO=x.peers||[];if(!LS('peers',{})[t]){PEERS=AUTO.slice();loadPeers()}})}}
 async function loadPeers(){const t=T,l=[T,...PEERS].join(',');const [a,b]=await Promise.all([wget('/s/quotes?t='+encodeURIComponent(l)),wget('/s/fund?t='+encodeURIComponent(l))]);if(T!==t)return;
  for(const r of a.rows||[])PQ[r.sym]=r;Object.assign(PF,b.rows||{});render()}
@@ -67,13 +67,13 @@ function addPeer(){const v=$('#pa').value.trim().toUpperCase();if(!v||v===T||PEE
 function rmPeer(s){PEERS=PEERS.filter(x=>x!==s);savePeers();render()}
 function resetPeers(){const p=LS('peers',{});delete p[T];SS('peers',p);PEERS=AUTO.slice();loadPeers()}
 // ---- chart ----
-function spark(h,w=900,ht=200){const rb=Object.entries(RL).map(([k,lb])=>`<button class="rb ${k===CR?'on':''}" onclick="setR('${k}')">${lb}</button>`).join('');
- const opts=[['','Compare: none'],[Q.index[0],Q.index[1]],...PEERS.map(s=>[s,s])].map(([v,l])=>`<option value="${esc(v)}" ${v===CMP?'selected':''}>${esc(l)}</option>`).join('');
+function spark(h,w=Math.round(Math.min(900,Math.max(300,(($('#m')||{}).clientWidth||900)-28))),ht=w<500?190:200){const rb=Object.entries(RL).map(([k,lb])=>`<button class="rb ${k===CR?'on':''}" onclick="setR('${k}')">${lb}</button>`).join('');
+ const L0=w<500?54:50;const opts=[['','Compare: none'],[Q.index[0],Q.index[1]],...PEERS.map(s=>[s,s])].map(([v,l])=>`<option value="${esc(v)}" ${v===CMP?'selected':''}>${esc(l)}</option>`).join('');
  const top=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><select onchange="setCmp(this.value)">${opts}</select><span>${rb}</span></div>`;
  if(!h||h.length<2)return top+'<div class="mut">chart unavailable</div>';
  const intra=CR==='1d'||CR==='5d',cmp=CMP&&CMPD&&CMPD.length>1,base=h[0][1];
  let C=null;if(cmp){const cb=CMPD[0][1];C=h.map(p=>{let j=0;while(j<CMPD.length-1&&CMPD[j+1][0]<=p[0])j++;return CMPD[j][0]<=p[0]+43200?(CMPD[j][1]/cb-1)*100:null})}
- const v=cmp?h.map(p=>(p[1]/base-1)*100):h.map(p=>p[1]),all=v.concat(C?C.filter(x=>x!=null):[]),mn=Math.min(...all),mx=Math.max(...all),r=mx-mn||1,L=50,ph=ht-14,pw=w-L;
+ const v=cmp?h.map(p=>(p[1]/base-1)*100):h.map(p=>p[1]),all=v.concat(C?C.filter(x=>x!=null):[]),mn=Math.min(...all),mx=Math.max(...all),r=mx-mn||1,L=L0,ph=ht-16,pw=w-L;
  const X=i=>L+i/(h.length-1)*pw,Y=y=>ph-4-(y-mn)/r*(ph-8),line=(a,c,wd)=>`<polyline fill="none" stroke="${c}" stroke-width="${wd}" points="${a.map((y,i)=>y==null?'':X(i).toFixed(1)+','+Y(y).toFixed(1)).filter(Boolean).join(' ')}"/>`;
  const fy=y=>cmp?(y>=0?'+':'')+f(y,1)+'%':money(y,Q.currency,y>=1000?0:undefined);
  const fx=t=>new Date(t*1e3).toLocaleString('en-GB',intra?{...(CR==='5d'?{day:'2-digit',month:'short'}:{}),hour:'2-digit',minute:'2-digit',timeZone:Q.tz}:{day:'2-digit',month:'short',...(['1y','5y'].includes(CR)?{year:'2-digit'}:{}),timeZone:Q.tz});
@@ -83,7 +83,7 @@ function spark(h,w=900,ht=200){const rb=Object.entries(RL).map(([k,lb])=>`<butto
  const vbar=vv.map((q,i)=>q?`<rect x="${(X(i)-bw/2).toFixed(1)}" y="${(ph-Math.min(q,vm)/vm*vb).toFixed(1)}" width="${bw.toFixed(1)}" height="${(Math.min(q,vm)/vm*vb).toFixed(1)}"/>`:'').join('');
  window.SP={h,v,C,mn,r,L,pw,ph,w,intra,cmp,X,Y,fy};
  const lg=cmp?`<span style="font-size:11px"><span style="color:#e8a165">━ ${esc(T)}</span> &nbsp;<span style="color:#64b5f6">━ ${esc(CMP===Q.index[0]?Q.index[1]:CMP)}</span> (% change)</span>`:'';
- return top+lg+`<svg id="sp" viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;font:10px system-ui;fill:#8a96a3;touch-action:pan-y"><g fill="#5a6672" opacity=".55">${vbar}</g>${C?line(C,'#64b5f6',1.6):''}${line(v,'#e8a165',2)}${yl}${xl}<g id="cx" style="display:none;pointer-events:none"><line y1="0" y2="${ph}" stroke="#8a96a3"/><circle r="3.5" fill="#e8a165" stroke="#fff"/><circle r="3" fill="#64b5f6" stroke="#fff"/><rect rx="3" height="16" fill="#0f1419" stroke="#b87333" stroke-width=".8"/><text fill="#e6e6e6"></text></g></svg><div class="mut">${RL[CR]} · ${cmp?'% change from start of range':'range '+money(Math.min(...v),Q.currency)+' – '+money(Math.max(...v),Q.currency)} · volume bars capped at 95th percentile · times ${esc(Q.tz)}</div>`}
+ return top+lg+`<svg id="sp" viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;font:${w<500?11.5:10}px system-ui;fill:#8a96a3;touch-action:pan-y"><g fill="#5a6672" opacity=".55">${vbar}</g>${C?line(C,'#64b5f6',1.6):''}${line(v,'#e8a165',2)}${yl}${xl}<g id="cx" style="display:none;pointer-events:none"><line y1="0" y2="${ph}" stroke="#8a96a3"/><circle r="3.5" fill="#e8a165" stroke="#fff"/><circle r="3" fill="#64b5f6" stroke="#fff"/><rect rx="3" height="16" fill="#0f1419" stroke="#b87333" stroke-width=".8"/><text fill="#e6e6e6" style="font-size:${w<500?10.5:10}px"></text></g></svg><div class="mut">${RL[CR]} · ${cmp?'% change from start of range':'range '+money(Math.min(...v),Q.currency)+' – '+money(Math.max(...v),Q.currency)} · volume bars capped at 95th percentile · times ${esc(Q.tz)}</div>`}
 function cxMove(e){const s=document.getElementById('sp'),S=window.SP;if(!s||!S)return;const b=s.getBoundingClientRect(),xv=(e.clientX-b.left)/b.width*S.w,i=Math.max(0,Math.min(S.v.length-1,Math.round((xv-S.L)/S.pw*(S.v.length-1))));
  const x=S.X(i),g=s.querySelector('#cx'),[ln,c,c2,rc,tx]=g.children;g.style.display='';ln.setAttribute('x1',x);ln.setAttribute('x2',x);c.setAttribute('cx',x);c.setAttribute('cy',S.Y(S.v[i]));
  const cv=S.C&&S.C[i];c2.style.display=cv!=null?'':'none';if(cv!=null){c2.setAttribute('cx',x);c2.setAttribute('cy',S.Y(cv))}
@@ -94,6 +94,13 @@ document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closes
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#sp'))cxMove(e)});
 // ---- render ----
 const val=s=>{const v=PF[s]||{},na='<span class="mut">n/a</span>';return `<td>${v.pe!=null?f(v.pe,1)+'x'+(v.pe_type==='F'?'<sup class="mut" title="Forward P/E (trailing EPS negative or missing)">fwd</sup>':''):na}</td><td>${v.ev_ebitda!=null?f(v.ev_ebitda,1)+'x':na}</td><td>${v.div_yield!=null?f(v.div_yield,1)+'%':na}</td>`};
+function anBox(){const a=AN,c=Q.currency,REC={strong_buy:'Strong buy',buy:'Buy',hold:'Hold',underperform:'Underperform',sell:'Sell',strong_sell:'Strong sell',none:'–'};
+ let b;if(!a.ok)b='<div class="mut">'+(a.failed?'Analyst data unavailable':'Loading…')+'</div>';
+ else if(a.none||!a.mean)b='<div class="mut">No analyst coverage</div>';
+ else{const px=Q.price??a.px,up=(a.mean/px-1)*100,lo=Math.min(a.lo??a.mean,px),hi=Math.max(a.hi??a.mean,px),r=hi-lo||1,P=x=>((x-lo)/r*100).toFixed(1);
+  const bar=`<div style="position:relative;height:26px;margin:10px 4px 2px"><div style="position:absolute;left:${P(a.lo??a.mean)}%;right:${100-P(a.hi??a.mean)}%;top:10px;height:6px;background:#3a4652;border-radius:3px"></div><div title="Mean target" style="position:absolute;left:${P(a.mean)}%;top:6px;width:2px;height:14px;background:#64b5f6;margin-left:-1px"></div><div title="Current price" style="position:absolute;left:${P(px)}%;top:4px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#e8a165;border:2px solid #fff;top:6px"></div></div><div style="display:flex;justify-content:space-between" class="mut"><span>Low ${money(a.lo,c)}</span><span>High ${money(a.hi,c)}</span></div>`;
+  b=`<div class="kv"><span>Mean target</span><b>${money(a.mean,c)} <span class="${up>=0?'up':'dn'}" style="font-weight:normal">${up>=0?'+':''}${f(up,1)}%</span></b><span>Consensus</span><b>${REC[a.key]||esc(a.key||'–')}${a.rmean?` <span class="mut">(${f(a.rmean,1)} / 5, 1 = strong buy)</span>`:''}</b><span>Analysts</span><b>${a.n}</b></div>${bar}<div class="mut"><span style="color:#e8a165">●</span> current price · <span style="color:#64b5f6">|</span> mean target</div>`}
+ return `<section class="t"><h2>Analyst targets</h2>${b}<div class="mut">Yahoo Finance consensus, daily. Not a recommendation.</div></section>`}
 function render(){if(!Q)return;const q=Q,fv=PF[T]||{},lt=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:q.tz});
  const cur=q.currency==='GBp'?'GBp (pence)':q.currency;let s='';
  s+=`<section class="t wide"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><div><h2 style="margin:0">${esc(q.name)} <span class="mut">${esc(T)}</span></h2>
@@ -103,10 +110,12 @@ function render(){if(!Q)return;const q=Q,fv=PF[T]||{},lt=new Date().toLocaleTime
  const row=(sym,me)=>{const r=PQ[sym]||{};return `<tr><td>${me?'<b>'+esc(sym)+'</b>':`<a href="?t=${encodeURIComponent(sym)}" onclick="go('${esc(sym)}');return false">${esc(sym)}</a>`}</td><td>${r.ok?money(r.price,r.currency):'<span class="mut">n/a</span>'}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td>${val(sym)}<td>${me?'':`<button class="x" title="Remove" onclick="rmPeer('${esc(sym)}')">×</button>`}</td></tr>`};
  s+=`<section class="t wide"><h2>Peers</h2><div style="overflow-x:auto"><table><tr><th>Ticker</th><th>Price</th><th>1D</th><th>1M</th><th>YTD</th><th title="Trailing P/E unless marked fwd">P/E</th><th>EV/EBITDA</th><th>Yield</th><th></th></tr>${row(T,1)}${PEERS.map(p=>row(p)).join('')}</table></div>
  <div style="margin-top:6px"><input id="pa" class="in" placeholder="Add ticker" size="10" onkeydown="if(event.key==='Enter')addPeer()"> <button class="chip" onclick="addPeer()">Add</button> <button class="chip" onclick="resetPeers()">Reset to auto</button></div><div class="mut">Auto peers: same industry and market by size (Yahoo), else Yahoo's similar symbols. Your edits are saved in this browser. Valuations computed in USD, daily.</div></section>`;
- s+=`<section class="t"><h2>Key stats</h2><div class="kv"><span>Market cap (USD)</span><b>${big(fv.mcap_usd)}</b><span>52-week range</span><b>${money(q.lo52,q.currency)} – ${money(q.hi52,q.currency)}</b><span>P/E</span><b>${fv.pe!=null?f(fv.pe,1)+'x'+(fv.pe_type==='F'?' <span class="mut">fwd</span>':''):'<span class="mut">n/a</span>'}</b><span>Dividend yield</span><b>${fv.div_yield!=null?f(fv.div_yield,1)+'%':'<span class="mut">n/a</span>'}</b><span>1M / YTD</span><b>${pc(q.m1)} / ${pc(q.ytd)}</b></div><div class="mut">P/E, yield and market cap from Yahoo fundamentals (daily), computed in USD.</div></section>`;
+ s+=`<section class="t"><h2>Key stats</h2><div class="kv"><span>Market cap</span><b>${fv.mcap!=null?big(fv.mcap,fv.mcap_cur):big(fv.mcap_usd)}${fv.mcap!=null&&fv.mcap_cur!=='USD'&&fv.mcap_usd?`<div class="mut" style="font-weight:normal;text-align:right">≈ ${big(fv.mcap_usd)}</div>`:''}</b><span>52-week range</span><b>${money(q.lo52,q.currency)} – ${money(q.hi52,q.currency)}</b><span>P/E</span><b>${fv.pe!=null?f(fv.pe,1)+'x'+(fv.pe_type==='F'?' <span class="mut">fwd</span>':''):'<span class="mut">n/a</span>'}</b><span>Dividend yield</span><b>${fv.div_yield!=null?f(fv.div_yield,1)+'%':'<span class="mut">n/a</span>'}</b><span>1M / YTD</span><b>${pc(q.m1)} / ${pc(q.ytd)}</b></div><div class="mut">Market cap in the trading currency (shares × price), USD equivalent below. P/E and yield computed in USD from Yahoo fundamentals, daily.</div></section>`;
+ s+=anBox();
  const n=(NW.items||[]);s+=`<section class="t"><h2>News</h2>${n.length?'<ul>'+n.map(i=>`<li><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a> <span class="mut">${i.ts?new Date(i.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')+'</ul>':'<div class="mut">'+(NW.ok?'No recent news':'Loading…')+'</div>'}<div class="mut">Yahoo Finance headlines</div></section>`;
  if(/\.L$/.test(T)){const r=NW.rns||{};s+=`<section class="t"><h2>RNS <span class="mut">(Investegate, UK times)</span></h2>${r.ok?'<table>'+r.items.map(i=>`<tr><td><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a></td><td class="mut">${i.date} ${i.time}</td></tr>`).join('')+'</table>':'<div class="mut">'+(NW.ok?'RNS unavailable for this ticker':'Loading…')+'</div>'}</section>`}
  $('#m').innerHTML=s}
+let rzT;addEventListener('resize',()=>{clearTimeout(rzT);rzT=setTimeout(()=>Q&&render(),200)});
 setInterval(async()=>{if(!T)return;const t=T,q=await wget('/s/quote?t='+encodeURIComponent(t));if(T===t&&q.ok){Q=q;render()}if(CR==='1d')setR('1d')},2*60*1000);
 drawRec();const u=new URLSearchParams(location.search).get('t');if(u)go(u);else{const r=LS('recent',[]);if(r[0])go(r[0])}
 </script></body></html>
