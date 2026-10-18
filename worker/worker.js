@@ -112,8 +112,17 @@ const REG = { L: "gb", TO: "ca", V: "ca", AX: "au", DE: "de", F: "de", PA: "fr",
 const IDX = { gb: ["^FTSE", "FTSE 100"], ca: ["^GSPTSE", "S&P/TSX"], au: ["^AXJO", "ASX 200"], de: ["^GDAXI", "DAX"], fr: ["^FCHI", "CAC 40"], es: ["^IBEX", "IBEX 35"], hk: ["^HSI", "Hang Seng"], jp: ["^N225", "Nikkei 225"] };
 const regOf = t => REG[(t.split(".")[1] || "").toUpperCase()] || "us";
 async function sSearch(q) {
-  const j = await (await get(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&listsCount=0`)).json();
-  return { items: (j.quotes || []).filter(x => x.symbol && x.isYahooFinance !== false).map(x => ({ sym: x.symbol, name: x.longname || x.shortname || x.symbol, ex: x.exchDisp || x.exchange || "", type: x.typeDisp || x.quoteType || "" })), ok: true };
+  const u = n => `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(n)}&quotesCount=15&newsCount=0&listsCount=0&enableFuzzyQuery=true&region=GB&lang=en-GB`;
+  let j = await (await get(u(q))).json();
+  if (!(j.quotes || []).length && q.length > 3) j = await (await get(u(q.slice(0, -1)))).json();  // fallback: drop last char (typos / partial words)
+  const Q = q.toUpperCase().replace(/\.L$/, "");
+  const score = x => { const s = x.symbol, base = s.split(".")[0], ex = x.exchange || "";
+    let v = 0; if (base === Q) v += 50; if (s.endsWith(".L") && !/^0/.test(s)) v += 30; if (/^(NYQ|NMS|NGM|NCM|ASE|PCX|BTS)$/.test(ex) && !s.includes(".")) v += 20;
+    if (/^(PNK|OQB|OQX|OEM|OTC|OGM|IOB)$/.test(ex) || /^0/.test(s) || /\.(XC|SG|F|DU|MU|BE|HM|XD)$/.test(s)) v -= 30; if (x.quoteType === "EQUITY") v += 5; if (/note|warrant/i.test(x.longname || x.shortname || "")) v -= 20;
+    return v; };
+  const items = (j.quotes || []).filter(x => x.symbol && x.isYahooFinance !== false).map((x, i) => [score(x) - i, x]).sort((a, b) => b[0] - a[0])
+    .slice(0, 8).map(([, x]) => ({ sym: x.symbol, name: x.longname || x.shortname || x.symbol, ex: x.exchDisp || x.exchange || "", type: x.typeDisp || x.quoteType || "" }));
+  return { items, ok: true };
 }
 async function sQuote(t) {
   const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?range=1y&interval=1d`)).json();
@@ -159,7 +168,7 @@ async function sNews(t) {
 }
 function sRoute(url) {
   const p = url.pathname, q = url.searchParams, t = (q.get("t") || "").toUpperCase();
-  if (p === "/s/search") { const s = (q.get("q") || "").trim().slice(0, 40); return s ? [() => sSearch(s), 86400, "q=" + s.toLowerCase()] : null; }
+  if (p === "/s/search") { const s = (q.get("q") || "").trim().slice(0, 40); return s ? [() => sSearch(s), 86400, "v=2&q=" + s.toLowerCase()] : null; }
   if (p === "/s/quotes") { const l = t.split(",").filter(x => TK.test(x)).slice(0, 12); return l.length ? [() => sQuotes(l), 120, "t=" + l.join(",")] : null; }
   if (p === "/s/fund") { const l = t.split(",").filter(x => TK.test(x)).slice(0, 12); return l.length ? [() => valFor(l).then(x => ({ ...x, ok: true })), 86400, "t=" + l.join(",")] : null; }
   if (!TK.test(t)) return null;
