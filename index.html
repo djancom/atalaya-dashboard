@@ -112,13 +112,14 @@ function merged(){const d={...B};
  const g=[B.generated,P.generated,S.generated,DY.generated].filter(Boolean).sort().pop();d.generated=g;return d}
 async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
 async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
-async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>LS=x||{}),wget('/chile').then(x=>CL=x||{}),wget('/inv').then(x=>IV=x)]);render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>LS=x||{}),wget('/s/fund?t=ATYM.L').then(x=>MC=((x.rows||{})['ATYM.L'])||{}),wget('/chile').then(x=>CL=x||{}),wget('/inv').then(x=>IV=x)]);render()}
+let MC={};const bigc=(v,p)=>v==null?'–':v>=1e12?p+f(v/1e12,2)+'tn':v>=1e9?p+f(v/1e9,v>=1e11?0:1)+'bn':p+f(v/1e6,0)+'m';
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
  s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE) ${mk('LSE')}</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
  <div><div class="big">${f(a.price,1)}p</div><div><span class="mut">last session</span> ${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
- <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b></div>
+ <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b><span title="Shares outstanding × price, Yahoo, daily">Market cap</span><b>${MC.mcap?bigc(MC.mcap,'£')+` <span class="mut" style="font-weight:normal">(${bigc(MC.mcap_usd,'$')})</span>`:'<span class="mut">n/a</span>'}</b></div>
  <div style="flex:1;min-width:260px">${spark(CHD||(CR==='1mo'?a.hist:null))}</div></div></section>`;
  s+=`<section class="t wide"><h2>ATYM RNS <span class="mut">(Investegate, times UK)</span></h2><table>${((d.rns||{}).items||[]).map(r=>`<tr><td><a href="${r.link}" target="_blank" rel="noopener">${r.title.replace(/</g,'&lt;')}</a>${r.date==new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'})?'<span class="badge" style="background:#2e7d32">today</span>':''}</td><td class="mut">${r.date} ${r.time}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${asof(d.rns,H)}</section>`;
  s+=`<section class="t"><h2>Copper</h2><div class="kv"><span>COMEX HG front-month fut. ($/lb) ${mk('CME')}</span><b>${f(c.comex_lb,3)} ${pc(c.comex_chg_pct)}</b>
