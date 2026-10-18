@@ -58,6 +58,7 @@ async function rns(code = "ATYM") {
     items.push({ date: `${m[3]}-${M[m[2]]}-${m[1].padStart(2, "0")}`, time: `${String(h).padStart(2, "0")}:${m[5]}`, link: m[7], title: unesc(m[8]) });
   }
   if (!items.length) throw new Error("no RNS rows");
+  items.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
   return { items, asof: iso(Date.now()), ok: true };
 }
 async function news() {
@@ -173,6 +174,7 @@ async function sAnalyst(t) {
 async function sNews(t) {
   const x = await (await get(`https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(t)}&region=US&lang=en-US`)).text();
   const items = (x.match(/<item>[\s\S]*?<\/item>/g) || []).slice(0, 12).map(it => { const g = tag => unesc((it.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) || [, ""])[1]); return { title: g("title"), link: g("link"), ts: (Date.parse(g("pubDate")) || 0) / 1000 }; });
+  items.sort((a, b) => b.ts - a.ts);
   const out = { items, asof: iso(Date.now()), ok: true };
   if (/\.L$/i.test(t)) { let c = t.slice(0, -2).toUpperCase().replace("-", "."); if (c.length < 3 && !c.includes(".")) c += "."; out.rns = await safe(rns(c)); }
   return out;
