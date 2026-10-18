@@ -178,6 +178,21 @@ async function stocks(env) {
   if (!o.lme.length && !o.comex.length && !o.shfe.length) throw new Error("no stocks");
   return o;
 }
+async function chile() {  // Cochilco monthly Chilean copper mine production, kt fine copper (TOTAL CHILE column)
+  const buf = await (await get("https://www.cochilco.cl/web/download/951/cobre/12683/produccion-de-cobre-mina-por-empresa-mensual.xlsx", 20000)).arrayBuffer();
+  const ss = [...(await unzipEntry(buf, "xl/sharedStrings.xml")).matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => m[1].replace(/<[^>]+>/g, "").trim());
+  const ti = ss.findIndex(x => /^TOTAL CHILE$/i.test(x)); if (ti < 0) throw new Error("no TOTAL CHILE");
+  const sh = await unzipEntry(buf, "xl/worksheets/sheet1.xml");
+  const hc = sh.match(new RegExp(`<c r="([A-Z]+)\\d+"[^>]*t="s"[^>]*><v>${ti}</v>`)); if (!hc) throw new Error("no total col");
+  const col = hc[1], pts = [];
+  for (const [, row] of sh.matchAll(/<row [^>]*>([\s\S]*?)<\/row>/g)) {
+    const a = row.match(/<c r="A\d+"[^>]*><v>(\d+)<\/v>/), v = row.match(new RegExp(`<c r="${col}\\d+"[^>]*>(?:<f[^>]*(?:/>|>[^<]*</f>))?<v>([\\d.]+)</v>`));
+    if (a && v && +a[1] > 40000 && +v[1] > 0) pts.push([new Date(Date.UTC(1899, 11, 30) + +a[1] * 864e5).toISOString().slice(0, 7), Math.round(+v[1] * 10) / 10]);
+  }
+  if (pts.length < 13) throw new Error("few rows");
+  const L = pts.at(-1), [y, m] = L[0].split("-"), py = pts.find(p => p[0] === `${+y - 1}-${m}`);
+  return { pts: pts.slice(-36), latest: L[0], kt: L[1], yoy: py ? Math.round((L[1] / py[1] - 1) * 1000) / 10 : null, source: "Cochilco", asof: iso(Date.now()), ok: true };
+}
 async function dDiesel() {
   const pg = await (await get("https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en")).text();
   const href = pg.match(/href="(\/document\/download\/[^"]+prices%20with%20Taxes[^"]*)"/)[1].replace(/&amp;/g, "&");
@@ -260,6 +275,7 @@ export default {
     if (url.pathname === "/lme") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r] && r !== "1d") { route = [() => lme(r), 3600]; ck += "?range=" + r; } }
     if (url.pathname === "/inv") { route = [async () => { const o = { asof: iso(Date.now()) }; await Promise.all([["comex", dComex], ["shfe", dShfe]].map(async ([k, fn]) => { try { o[k] = await fn(); } catch (e) { } })); if (!o.comex && !o.shfe) throw new Error("no inv"); return o; }, 21600]; }
     if (url.pathname === "/stocks") { route = [() => stocks(env), 21600]; ck += "?v=1"; }
+    if (url.pathname === "/chile") { route = [chile, 86400]; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;

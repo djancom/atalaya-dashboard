@@ -15,7 +15,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right
 <main id="m">Loading…</main>
 <section class="t" style="margin:0 12px"><h2>On X</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Atalaya%20Mining%22&amp;f=live">&quot;Atalaya Mining&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%24ATYM%20OR%20ATYM.L&amp;f=live">$ATYM OR ATYM.L</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Touro%20copper%20OR%20%22Proyecto%20Touro%22&amp;f=live">Touro copper OR &quot;Proyecto Touro&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Riotinto%20copper%20Atalaya&amp;f=live">Riotinto copper Atalaya</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Masa%20Valverde%22&amp;f=live">&quot;Masa Valverde&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=E-LIX%20Atalaya&amp;f=live">E-LIX Atalaya</a></div><div class="mut">Opens X search, latest first.</div></section>
 <section class="t" style="margin:12px 12px 0"><h2>Bulletin boards</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://www.lse.co.uk/ShareChat.html?ShareTicker=ATYM">London South East: ATYM chat</a><a class="xb" target="_blank" rel="noopener" href="https://uk.advfn.com/stock-market/london/atalaya-mining-copper-ATYM/share-chat">ADVFN: ATYM board</a></div></section>
-<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; COMEX stocks via MetalCharts (history: meiyuanhuanliu.com); SHFE weekly; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
+<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; COMEX stocks via MetalCharts (history: meiyuanhuanliu.com); SHFE weekly; Chile output via Cochilco; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
 <script>
 const $=s=>document.querySelector(s),f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pp=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v,1)} pp</span>`;const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
@@ -66,6 +66,12 @@ document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closes
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#cp'))cpMove(e)});
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,e=>{if(e.pointerType!=='mouse')cpHide()}));
 document.addEventListener('pointerleave',e=>{if(e.target.id==='cp')cpHide()},true);
+let CL={};function clChart(w=300,ht=110){const P=CL.pts||[];if(P.length<2)return '<div class="mut">unavailable</div>';
+ const mx=Math.max(...P.map(p=>p[1]))*1.05,L=30,ph=ht-14,pw=w-L,bw=pw/P.length,Y=v=>ph-v/mx*(ph-2),ml=k=>{const [y,m]=k.split('-');return new Date(Date.UTC(+y,+m-1,1)).toLocaleDateString('en-GB',{month:'short',year:'2-digit',timeZone:'UTC'})};
+ const bars=P.map((p,i)=>`<rect x="${(L+i*bw+.5).toFixed(1)}" y="${Y(p[1]).toFixed(1)}" width="${Math.max(bw-1,1).toFixed(1)}" height="${(ph-Y(p[1])).toFixed(1)}" fill="${i===P.length-1?'#e8a165':'#b8733399'}"><title>${ml(p[0])}: ${f(p[1],1)} kt</title></rect>`).join('');
+ const yl=[mx,mx/2].map(y=>`<text x="${L-4}" y="${(Y(y)+8).toFixed(1)}" text-anchor="end">${f(y,0)}</text>`).join('')+`<text x="${L-4}" y="${ph}" text-anchor="end">0</text>`;
+ const xl=[0,Math.floor(P.length/2),P.length-1].map((i,j)=>`<text x="${(L+i*bw+(j==2?bw:0)).toFixed(1)}" y="${ht-2}" text-anchor="${['start','middle','end'][j]}">${ml(P[i][0])}</text>`).join('');
+ return `<div class="kv"><span>${ml(CL.latest)} (kt)</span><b>${f(CL.kt,1)} ${CL.yoy!=null?`<span class="${CL.yoy>=0?'up':'dn'}" style="font-weight:normal">${CL.yoy>0?'+':''}${f(CL.yoy,1)}% y/y</span>`:''}</b></div><svg viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;margin-top:6px;font:10px system-ui;fill:#8a96a3">${bars}${yl}${xl}</svg><div class="mut">Monthly mine output, thousand t fine copper · Cochilco · last 36 months, updated monthly</div>`}
 let LS={},IV={};const LSS=[['lme','LME','#64b5f6'],['comex','COMEX','#e8a165'],['shfe','SHFE','#81c784']];
 function lsChart(w=300,ht=120){const A=LSS.map(([k])=>LS[k]||[]),all=A.flat();if(all.length<2)return '<div class="mut">Stock history unavailable</div>';
  const ts=all.map(p=>p[0]),t0=Math.min(...ts),t1=Math.max(...ts),mx=Math.max(...all.map(p=>p[1]))*1.05,L=34,ph=ht-14,pw=w-L;
@@ -106,7 +112,7 @@ function merged(){const d={...B};
  const g=[B.generated,P.generated,S.generated,DY.generated].filter(Boolean).sort().pop();d.generated=g;return d}
 async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
 async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
-async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>LS=x||{}),wget('/inv').then(x=>IV=x)]);render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>LS=x||{}),wget('/chile').then(x=>CL=x||{}),wget('/inv').then(x=>IV=x)]);render()}
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
@@ -131,6 +137,7 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  </div></section>`;
  const inv=(k,u)=>iv[k]?`<b>${f(iv[k].t,0)} t${iv[k].stale?'<span class="badge">stale</span>':''}</b><span class="mut">${iv[k].date||''}</span>`:'<b class="mut">unavailable</b><span></span>';
  s+=`<section class="t"><h2>Copper inventories</h2><div class="kv" style="grid-template-columns:1fr auto auto"><span>LME</span>${inv('lme')}<span title="Registered + eligible, converted from short tons">COMEX</span>${inv('comex')}<span>SHFE (weekly)</span>${inv('shfe')}</div><div class="mut">Best-effort: LME via Westmetall, COMEX via MetalCharts (CME data), SHFE weekly report.</div>${lsChart()}</section>`;
+ s+=`<section class="t"><h2>Chile copper mine output</h2>${clChart()}</section>`;
  s+=`<section class="t"><h2>Copper price: COMEX vs LME ($/t)</h2>${cuChart()}</section>`;
  s+=`<section class="t"><h2>Markets</h2><table>${(((P.markets)||{}).rows||[]).map(r=>`<tr><td>${r.name} ${mk(r.ex)}</td><td>${r.unavailable?'<span class="mut">n/a</span>':f(r.price,r.price<100?2:r.price<1000?2:0)}</td><td>${r.unavailable?'':pc(r.chg_pct)}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${P.markets?asof(P.markets,H):''}</section>`;
  s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th><th title="Trailing P/E unless marked fwd (forward)">P/E</th><th>EV/EBITDA</th><th>Yield</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span> ${mk(exOf(r.sym))}${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td>${vc(r.sym)}</tr>`).join('')}
