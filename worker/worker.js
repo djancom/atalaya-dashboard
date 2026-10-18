@@ -46,8 +46,10 @@ async function prices() {
 }
 
 const unesc = s => s.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").trim();
-async function rns() {
-  const t = await (await get("https://www.investegate.co.uk/company/ATYM")).text();
+async function rns(code = "ATYM") {
+  const rr = await get("https://www.investegate.co.uk/company/" + encodeURIComponent(code));
+  if (!/\/company\//.test(rr.url)) throw new Error("no such company");  // unknown codes redirect to the homepage
+  const t = await rr.text();
   const re = /<td>(\d{1,2}) (\w{3}) (\d{4})<\/td>\s*<td>(\d{1,2}):(\d{2}) ([AP]M)<\/td>[\s\S]*?class="announcement-link" href="([^"]+)">([^<]+)<\/a>/g;
   const M = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
   const items = []; let m;
@@ -81,7 +83,7 @@ async function slow() {
   const out = { generated: iso(Date.now()) }; if (r.ok) out.rns = r; if (n.ok) out.news = n; return out;
 }
 
-const RANGES = { "1d": ["1d", "5m", 120], "1mo": ["1mo", "1d", 3600], "3mo": ["3mo", "1d", 3600], "6mo": ["6mo", "1d", 3600], "1y": ["1y", "1d", 3600], "5y": ["5y", "1wk", 3600] };
+const RANGES = { "1d": ["1d", "5m", 120], "5d": ["5d", "15m", 300], "1mo": ["1mo", "1d", 3600], "3mo": ["3mo", "1d", 3600], "6mo": ["6mo", "1d", 3600], "1y": ["1y", "1d", 3600], "5y": ["5y", "1wk", 3600] };
 const SYMS = ["ATYM.L", "HG=F"];
 async function lme(r, col = 0) {
   const yrs = { "1mo": 1, "3mo": 1, "6mo": 1, "1y": 2, "5y": 6 }[r], Y = new Date().getUTCFullYear(), M = {};
@@ -102,6 +104,70 @@ async function chart(r, sym = "ATYM.L") {
   const pts = (res.timestamp || []).map((t, i) => [t, q[i], vo[i] || 0]).filter(p => p[1] != null).map(p => [p[0], Math.round(p[1] * 100) / 100, p[2]]);
   if (!pts.length) throw new Error("no points");
   return { range: r, interval: iv, pts, asof: iso((res.meta.regularMarketTime || pts.at(-1)[0]) * 1000), ok: true };
+}
+
+// ---- any-stock dashboard (/s/*) ----
+const TK = /^[A-Za-z0-9.\-^=]{1,15}$/;
+const REG = { L: "gb", TO: "ca", V: "ca", AX: "au", DE: "de", F: "de", PA: "fr", MC: "es", AS: "nl", MI: "it", SW: "ch", HK: "hk", T: "jp", ST: "se", OL: "no", CO: "dk", HE: "fi", BR: "be", LS: "pt", IR: "ie", SA: "br", KS: "kr", NS: "in", BO: "in" };
+const IDX = { gb: ["^FTSE", "FTSE 100"], ca: ["^GSPTSE", "S&P/TSX"], au: ["^AXJO", "ASX 200"], de: ["^GDAXI", "DAX"], fr: ["^FCHI", "CAC 40"], es: ["^IBEX", "IBEX 35"], hk: ["^HSI", "Hang Seng"], jp: ["^N225", "Nikkei 225"] };
+const regOf = t => REG[(t.split(".")[1] || "").toUpperCase()] || "us";
+async function sSearch(q) {
+  const j = await (await get(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0&listsCount=0`)).json();
+  return { items: (j.quotes || []).filter(x => x.symbol && x.isYahooFinance !== false).map(x => ({ sym: x.symbol, name: x.longname || x.shortname || x.symbol, ex: x.exchDisp || x.exchange || "", type: x.typeDisp || x.quoteType || "" })), ok: true };
+}
+async function sQuote(t) {
+  const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t)}?range=1y&interval=1d`)).json();
+  const res = j.chart && j.chart.result && j.chart.result[0]; if (!res || !res.timestamp) throw new Error("unknown ticker");
+  const m = res.meta, y = await yahoo(t), tp = m.currentTradingPeriod && m.currentTradingPeriod.regular, now = Date.now() / 1000;
+  return { sym: t, name: m.longName || m.shortName || t, currency: m.currency, ex: m.fullExchangeName || m.exchangeName, tz: m.exchangeTimezoneName, type: m.instrumentType,
+    price: y.price, chg: y.chg, chg_pct: y.chg_pct, m1: y.m1, ytd: y.ytd, hi52: m.fiftyTwoWeekHigh, lo52: m.fiftyTwoWeekLow,
+    open: tp ? now >= tp.start && now < tp.end && Math.abs(now - m.regularMarketTime) < 3600 : null, session: tp ? [tp.start, tp.end] : null,
+    region: regOf(t), index: IDX[regOf(t)] || ["^GSPC", "S&P 500"], asof: y.asof, ok: true };
+}
+async function sQuotes(list) {
+  const r = await Promise.all(list.map(s => safe(yahoo(s)).then(x => (delete x.hist, { sym: s, ...x }))));
+  return { rows: r, asof: iso(Date.now()), ok: true };
+}
+async function sPeers(t) {
+  const { H, crumb } = await ycrumb(), reg = regOf(t);
+  let ind = null, out = [], tm = 0;
+  try { const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(t)}?modules=assetProfile,price&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json(); const r = j.quoteSummary.result[0]; ind = r.assetProfile.industry || null; tm = (r.price.marketCap || {}).raw || 0; } catch (e) { }
+  const scr = async region => { const j = await (await fetch(`https://query1.finance.yahoo.com/v1/finance/screener?crumb=${encodeURIComponent(crumb)}`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, signal: AbortSignal.timeout(8000),
+    body: JSON.stringify({ size: 25, offset: 0, sortField: "intradaymarketcap", sortType: "DESC", quoteType: "EQUITY", query: { operator: "and", operands: [{ operator: "eq", operands: ["industry", ind] }, { operator: "eq", operands: ["region", region] }] } }) })).json();
+    return (j.finance.result[0].quotes || []).filter(q => !/^(PNK|OQB|OQX|OEM|OTC|OGM|IOB)$/.test(q.exchange || "") && !/^0|-/.test(q.symbol) && (q.marketCap || 0) >= (region === reg ? tm * 0.02 : 1e9)).map(q => q.symbol); };
+  if (ind) {
+    try {
+      const sfx = t.includes(".") ? "." + t.split(".")[1] : "", same = s => sfx ? s.endsWith(sfx) : !s.includes(".");
+      out = (await scr(reg)).filter(s => s !== t && same(s));
+      if (out.length < 4 && reg !== "us") out = out.concat((await scr("us")).filter(s => s !== t && !s.includes(".")));
+    } catch (e) { }
+  }
+  if (out.length < 3) try {
+    const j = await (await get(`https://query1.finance.yahoo.com/v6/finance/recommendationsbysymbol/${encodeURIComponent(t)}`)).json();
+    out = out.concat(j.finance.result[0].recommendedSymbols.map(x => x.symbol));
+  } catch (e) { }
+  const seen = new Set([t.split(".")[0]]);
+  out = out.filter(s => { const b = s.split(".")[0].replace(/-.*/, ""); if (seen.has(b)) return false; seen.add(b); return true; });
+  return { peers: out.slice(0, 6), industry: ind, asof: iso(Date.now()), ok: true };
+}
+async function sNews(t) {
+  const x = await (await get(`https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(t)}&region=US&lang=en-US`)).text();
+  const items = (x.match(/<item>[\s\S]*?<\/item>/g) || []).slice(0, 12).map(it => { const g = tag => unesc((it.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) || [, ""])[1]); return { title: g("title"), link: g("link"), ts: (Date.parse(g("pubDate")) || 0) / 1000 }; });
+  const out = { items, asof: iso(Date.now()), ok: true };
+  if (/\.L$/i.test(t)) { let c = t.slice(0, -2).toUpperCase().replace("-", "."); if (c.length < 3 && !c.includes(".")) c += "."; out.rns = await safe(rns(c)); }
+  return out;
+}
+function sRoute(url) {
+  const p = url.pathname, q = url.searchParams, t = (q.get("t") || "").toUpperCase();
+  if (p === "/s/search") { const s = (q.get("q") || "").trim().slice(0, 40); return s ? [() => sSearch(s), 86400, "q=" + s.toLowerCase()] : null; }
+  if (p === "/s/quotes") { const l = t.split(",").filter(x => TK.test(x)).slice(0, 12); return l.length ? [() => sQuotes(l), 120, "t=" + l.join(",")] : null; }
+  if (p === "/s/fund") { const l = t.split(",").filter(x => TK.test(x)).slice(0, 12); return l.length ? [() => valFor(l).then(x => ({ ...x, ok: true })), 86400, "t=" + l.join(",")] : null; }
+  if (!TK.test(t)) return null;
+  if (p === "/s/quote") return [() => sQuote(t), 120, "t=" + t];
+  if (p === "/s/chart") { const r = q.get("range") || "1mo"; return RANGES[r] ? [() => chart(r, t), RANGES[r][2], "t=" + t + "&r=" + r] : null; }
+  if (p === "/s/peers") return [() => sPeers(t), 86400, "v=2&t=" + t];
+  if (p === "/s/news") return [() => sNews(t), 600, "t=" + t];
+  return null;
 }
 
 // ---- daily items, refreshed by Cron Trigger into KV ----
@@ -207,17 +273,22 @@ async function dDiesel() {
   const date = new Date(Date.UTC(1899, 11, 30) + serial * 864e5).toISOString().slice(0, 10);
   return { price: Math.round(cell(es, "C") * 10) / 10, date, asof: date + "T12:00:00Z", ok: true };
 }
-async function dVal() {
+async function ycrumb() {
   const r0 = await fetch("https://fc.yahoo.com", { headers: UA, redirect: "manual", signal: AbortSignal.timeout(8000) });
   const ck = (r0.headers.getSetCookie ? r0.headers.getSetCookie() : [r0.headers.get("set-cookie") || ""]).map(c => c.split(";")[0]).filter(Boolean).join("; ");
   const H = { ...UA, Cookie: ck };
   const crumb = await (await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", { headers: H, signal: AbortSignal.timeout(8000) })).text();
   if (!crumb || crumb.length > 20 || /[<{ ]/.test(crumb)) throw new Error("no crumb");
+  return { H, crumb };
+}
+const dVal = () => valFor(["ATYM.L", ...PEERS.map(p => p[0])]);
+async function valFor(syms) {
+  const { H, crumb } = await ycrumb();
   // Yahoo mixes quote currency (e.g. GBp) and reporting currency (USD/EUR) in its ratios, so recompute everything in USD.
   const fxr = { USD: 1 };
   await Promise.all(["GBP", "EUR", "CAD", "AUD"].map(async c => { try { fxr[c] = (await yahoo(c + "USD=X")).price; } catch (e) { } }));
   if (fxr.GBP) fxr.GBp = fxr.GBP / 100;
-  const syms = ["ATYM.L", ...PEERS.map(p => p[0])], out = {};
+  const out = {};
   await Promise.all(syms.map(async s => {
     try {
       const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(s)}?modules=summaryDetail,defaultKeyStatistics,financialData,price&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json();
@@ -235,7 +306,7 @@ async function dVal() {
       const tdr = v(sd.trailingAnnualDividendRate);  // reported in the financial currency
       const dy = tdr != null ? tdr * fr / pxU * 100 : null;
       const rd = (x, n) => x == null || !isFinite(x) ? null : Math.round(x * 10 ** n) / 10 ** n;
-      out[s] = { pe: rd(pe, 2), pe_type, ev_ebitda: rd(ev_ebitda, 2), div_yield: rd(dy, 2), qc, fc };
+      out[s] = { pe: rd(pe, 2), pe_type, ev_ebitda: rd(ev_ebitda, 2), div_yield: rd(dy, 2), qc, fc, mcap_usd: sh ? Math.round(sh * pxU) : null };
     } catch (e) { }
   }));
   if (!Object.keys(out).length) throw new Error("quoteSummary blocked");
@@ -274,6 +345,7 @@ export default {
     if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo", s = url.searchParams.get("symbol") || "ATYM.L"; if (RANGES[r] && SYMS.includes(s)) { route = [() => chart(r, s), RANGES[r][2]]; ck += "?v=2&range=" + r + "&symbol=" + s; } }
     if (url.pathname === "/lme") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r] && r !== "1d") { route = [() => lme(r), 3600]; ck += "?range=" + r; } }
     if (url.pathname === "/inv") { route = [async () => { const o = { asof: iso(Date.now()) }; await Promise.all([["comex", dComex], ["shfe", dShfe]].map(async ([k, fn]) => { try { o[k] = await fn(); } catch (e) { } })); if (!o.comex && !o.shfe) throw new Error("no inv"); return o; }, 21600]; }
+    if (url.pathname.startsWith("/s/")) { const sr = sRoute(url); if (sr) { route = sr; ck += "?" + sr[2]; } }
     if (url.pathname === "/stocks") { route = [() => stocks(env), 21600]; ck += "?v=1"; }
     if (url.pathname === "/chile") { route = [chile, 86400]; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }

@@ -1,0 +1,101 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stock Dashboard</title>
+<style>
+body{font:14px/1.4 system-ui,sans-serif;margin:0;background:#0f1419;color:#e6e6e6}
+header{padding:12px 20px;background:#1a2129;border-bottom:3px solid #b87333;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+h1{margin:0;font-size:20px;color:#e8a165}h2{margin:0 0 8px;font-size:14px;color:#e8a165;text-transform:uppercase;letter-spacing:.05em}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:12px}
+.t{background:#1a2129;border-radius:8px;padding:14px}.wide{grid-column:1/-1}
+.big{font-size:32px;font-weight:600}.up{color:#4caf50}.dn{color:#ef5350}.mut{color:#8a96a3;font-size:12px}
+.badge{border-radius:4px;padding:1px 6px;font-size:11px;margin-left:6px;color:#fff;background:#5a6672}.open{background:#2e7d32}
+table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right;border-bottom:1px solid #2a333d}td:first-child,th:first-child{text-align:left}
+.kv{display:grid;grid-template-columns:1fr auto;gap:3px 12px}a{color:#9cc4ff;text-decoration:none}li{margin:4px 0}ul{padding-left:18px;margin:0}
+#sw{position:relative;flex:1;max-width:420px}#q{width:100%;box-sizing:border-box;padding:7px 10px;border-radius:6px;border:1px solid #3a4652;background:#0f1419;color:#e6e6e6;font-size:14px}
+#ac{position:absolute;z-index:9;left:0;right:0;top:36px;background:#1a2129;border:1px solid #3a4652;border-radius:6px;display:none;max-height:320px;overflow:auto}
+#ac div{padding:6px 10px;cursor:pointer}#ac div:hover,#ac div.sel{background:#2a333d}
+.chip{background:#2a333d;border:0;color:#e6e6e6;border-radius:12px;padding:2px 9px;margin:2px;font-size:12px;cursor:pointer}
+.rb{background:#2a333d;color:#e6e6e6;border:0;border-radius:3px;padding:0 5px;margin-left:2px;font-size:10px;cursor:pointer}.rb.on{background:#b87333}
+select,.in{background:#0f1419;color:#e6e6e6;border:1px solid #3a4652;border-radius:4px;font-size:12px;padding:2px 4px}
+.x{background:none;border:0;color:#8a96a3;cursor:pointer;font-size:14px}</style></head><body>
+<header><h1>Stock Dashboard</h1><div id="sw"><input id="q" placeholder="Ticker or company name, e.g. BP.L, Apple" autocomplete="off"><div id="ac"></div></div><div id="rec"></div></header>
+<main id="m"><section class="t wide mut">Search for a stock to begin.</section></main>
+<footer class="mut" style="text-align:center;padding:16px 12px 24px">Independent dashboard built from free public sources (Yahoo Finance, Investegate). Data may be delayed or inaccurate. Not investment advice.</footer>
+<script>
+const W='https://atalaya-data.djancom.workers.dev',$=s=>document.querySelector(s);
+const wget=p=>fetch(W+p,{signal:AbortSignal.timeout(20000)}).then(r=>r.ok?r.json():{}).catch(()=>({}));
+const f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pc=v=>v==null?'<span class="mut">n/a</span>':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LS=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},SS=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+const SYM={USD:'$',GBP:'£',EUR:'€',JPY:'¥',CAD:'C$',AUD:'A$',HKD:'HK$',CHF:'CHF '};
+const money=(v,c,d)=>v==null?'–':c==='GBp'||c==='GBX'?f(v,d??(v<100?2:1))+'p':(SYM[c]||'')+f(v,d??2)+(SYM[c]?'':' '+(c||''));
+const big=v=>v==null?'–':v>=1e12?'$'+f(v/1e12,2)+'tn':v>=1e9?'$'+f(v/1e9,1)+'bn':'$'+f(v/1e6,0)+'m';
+const RL={'1d':'1D','5d':'5D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
+let T=null,Q=null,CR='1mo',CH=null,CMP='',CMPD=null,PEERS=[],PQ={},PF={},NW={},AUTO=[];
+// ---- search ----
+let acT,acI=-1,acL=[];
+$('#q').addEventListener('input',e=>{clearTimeout(acT);const v=e.target.value.trim();if(v.length<1){$('#ac').style.display='none';return}acT=setTimeout(async()=>{const j=await wget('/s/search?q='+encodeURIComponent(v));acL=j.items||[];acI=-1;drawAc()},250)});
+$('#q').addEventListener('keydown',e=>{if(e.key==='ArrowDown'){acI=Math.min(acI+1,acL.length-1);drawAc();e.preventDefault()}else if(e.key==='ArrowUp'){acI=Math.max(acI-1,0);drawAc();e.preventDefault()}else if(e.key==='Enter'){const v=acI>=0&&acL[acI]?acL[acI].sym:$('#q').value.trim();if(v)go(v)}else if(e.key==='Escape')$('#ac').style.display='none'});
+document.addEventListener('click',e=>{if(!e.target.closest('#sw'))$('#ac').style.display='none'});
+function drawAc(){const a=$('#ac');a.innerHTML=acL.map((x,i)=>`<div class="${i===acI?'sel':''}" onclick="go('${esc(x.sym)}')"><b>${esc(x.sym)}</b> ${esc(x.name)} <span class="mut">${esc(x.ex)} · ${esc(x.type)}</span></div>`).join('')||'<div class="mut">No matches</div>';a.style.display=''}
+function drawRec(){$('#rec').innerHTML=LS('recent',[]).map(s=>`<button class="chip" onclick="go('${esc(s)}')">${esc(s)}</button>`).join('')}
+// ---- load ----
+async function go(t){t=t.toUpperCase().trim();$('#ac').style.display='none';$('#q').value='';T=t;Q=null;CH=null;CMP='';CMPD=null;PQ={};PF={};NW={};
+ history.replaceState(null,'','?t='+encodeURIComponent(t));$('#m').innerHTML='<section class="t wide mut">Loading '+esc(t)+'…</section>';
+ const q=await wget('/s/quote?t='+encodeURIComponent(t));if(T!==t)return;
+ if(!q.ok){$('#m').innerHTML=`<section class="t wide"><h2>Not found</h2><div>No data for <b>${esc(t)}</b>. Check the ticker (London listings end in .L, e.g. BP.L) or search by name.</div></section>`;return}
+ Q=q;document.title=q.name+' · Stock Dashboard';const r=LS('recent',[]).filter(x=>x!==t);r.unshift(t);SS('recent',r.slice(0,8));drawRec();render();
+ setR(CR);wget('/s/news?t='+encodeURIComponent(t)).then(x=>{if(T===t){NW=x;render()}});
+ const saved=LS('peers',{})[t];if(saved){PEERS=saved;loadPeers()}else{PEERS=[];wget('/s/peers?t='+encodeURIComponent(t)).then(x=>{if(T!==t)return;AUTO=x.peers||[];if(!LS('peers',{})[t]){PEERS=AUTO.slice();loadPeers()}})}}
+async function loadPeers(){const t=T,l=[T,...PEERS].join(',');const [a,b]=await Promise.all([wget('/s/quotes?t='+encodeURIComponent(l)),wget('/s/fund?t='+encodeURIComponent(l))]);if(T!==t)return;
+ for(const r of a.rows||[])PQ[r.sym]=r;Object.assign(PF,b.rows||{});render()}
+async function setR(r){CR=r;const t=T;const [c,d]=await Promise.all([wget(`/s/chart?t=${encodeURIComponent(t)}&range=${r}`),CMP?wget(`/s/chart?t=${encodeURIComponent(CMP)}&range=${r}`):null]);if(T!==t)return;CH=c.pts||null;CMPD=d&&d.pts||null;render()}
+function setCmp(v){CMP=v;setR(CR)}
+function savePeers(){const p=LS('peers',{});p[T]=PEERS;SS('peers',p)}
+function addPeer(){const v=$('#pa').value.trim().toUpperCase();if(!v||v===T||PEERS.includes(v))return;PEERS.push(v);savePeers();loadPeers()}
+function rmPeer(s){PEERS=PEERS.filter(x=>x!==s);savePeers();render()}
+function resetPeers(){const p=LS('peers',{});delete p[T];SS('peers',p);PEERS=AUTO.slice();loadPeers()}
+// ---- chart ----
+function spark(h,w=900,ht=200){const rb=Object.entries(RL).map(([k,lb])=>`<button class="rb ${k===CR?'on':''}" onclick="setR('${k}')">${lb}</button>`).join('');
+ const opts=[['','Compare: none'],[Q.index[0],Q.index[1]],...PEERS.map(s=>[s,s])].map(([v,l])=>`<option value="${esc(v)}" ${v===CMP?'selected':''}>${esc(l)}</option>`).join('');
+ const top=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><select onchange="setCmp(this.value)">${opts}</select><span>${rb}</span></div>`;
+ if(!h||h.length<2)return top+'<div class="mut">chart unavailable</div>';
+ const intra=CR==='1d'||CR==='5d',cmp=CMP&&CMPD&&CMPD.length>1,base=h[0][1];
+ let C=null;if(cmp){const cb=CMPD[0][1];C=h.map(p=>{let j=0;while(j<CMPD.length-1&&CMPD[j+1][0]<=p[0])j++;return CMPD[j][0]<=p[0]+43200?(CMPD[j][1]/cb-1)*100:null})}
+ const v=cmp?h.map(p=>(p[1]/base-1)*100):h.map(p=>p[1]),all=v.concat(C?C.filter(x=>x!=null):[]),mn=Math.min(...all),mx=Math.max(...all),r=mx-mn||1,L=50,ph=ht-14,pw=w-L;
+ const X=i=>L+i/(h.length-1)*pw,Y=y=>ph-4-(y-mn)/r*(ph-8),line=(a,c,wd)=>`<polyline fill="none" stroke="${c}" stroke-width="${wd}" points="${a.map((y,i)=>y==null?'':X(i).toFixed(1)+','+Y(y).toFixed(1)).filter(Boolean).join(' ')}"/>`;
+ const fy=y=>cmp?(y>=0?'+':'')+f(y,1)+'%':money(y,Q.currency,y>=1000?0:undefined);
+ const fx=t=>new Date(t*1e3).toLocaleString('en-GB',intra?{...(CR==='5d'?{day:'2-digit',month:'short'}:{}),hour:'2-digit',minute:'2-digit',timeZone:Q.tz}:{day:'2-digit',month:'short',...(['1y','5y'].includes(CR)?{year:'2-digit'}:{}),timeZone:Q.tz});
+ const yl=[mx,(mn+mx)/2,mn].map((y,i)=>`<text x="${L-4}" y="${(4+i*(ph-8)/2+3).toFixed(1)}" text-anchor="end">${fy(y)}</text>`).join('');
+ const xl=[0,.5,1].map(q=>{const i=Math.round(q*(h.length-1));return `<text x="${(L+q*pw).toFixed(1)}" y="${ht-2}" text-anchor="${q?q<1?'middle':'end':'start'}">${fx(h[i][0])}</text>`}).join('');
+ const vv=h.map(x=>x[2]||0),vs=vv.filter(q=>q).sort((a,b)=>a-b),vm=vs[Math.floor(vs.length*.95)]||vs[vs.length-1]||1,vb=(ph-8)*.3,bw=Math.max(1,pw/h.length*.7);
+ const vbar=vv.map((q,i)=>q?`<rect x="${(X(i)-bw/2).toFixed(1)}" y="${(ph-Math.min(q,vm)/vm*vb).toFixed(1)}" width="${bw.toFixed(1)}" height="${(Math.min(q,vm)/vm*vb).toFixed(1)}"/>`:'').join('');
+ window.SP={h,v,C,mn,r,L,pw,ph,w,intra,cmp,X,Y,fy};
+ const lg=cmp?`<span style="font-size:11px"><span style="color:#e8a165">━ ${esc(T)}</span> &nbsp;<span style="color:#64b5f6">━ ${esc(CMP===Q.index[0]?Q.index[1]:CMP)}</span> (% change)</span>`:'';
+ return top+lg+`<svg id="sp" viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;font:10px system-ui;fill:#8a96a3;touch-action:pan-y"><g fill="#5a6672" opacity=".55">${vbar}</g>${C?line(C,'#64b5f6',1.6):''}${line(v,'#e8a165',2)}${yl}${xl}<g id="cx" style="display:none;pointer-events:none"><line y1="0" y2="${ph}" stroke="#8a96a3"/><circle r="3.5" fill="#e8a165" stroke="#fff"/><circle r="3" fill="#64b5f6" stroke="#fff"/><rect rx="3" height="16" fill="#0f1419" stroke="#b87333" stroke-width=".8"/><text fill="#e6e6e6"></text></g></svg><div class="mut">${RL[CR]} · ${cmp?'% change from start of range':'range '+money(Math.min(...v),Q.currency)+' – '+money(Math.max(...v),Q.currency)} · volume bars capped at 95th percentile · times ${esc(Q.tz)}</div>`}
+function cxMove(e){const s=document.getElementById('sp'),S=window.SP;if(!s||!S)return;const b=s.getBoundingClientRect(),xv=(e.clientX-b.left)/b.width*S.w,i=Math.max(0,Math.min(S.v.length-1,Math.round((xv-S.L)/S.pw*(S.v.length-1))));
+ const x=S.X(i),g=s.querySelector('#cx'),[ln,c,c2,rc,tx]=g.children;g.style.display='';ln.setAttribute('x1',x);ln.setAttribute('x2',x);c.setAttribute('cx',x);c.setAttribute('cy',S.Y(S.v[i]));
+ const cv=S.C&&S.C[i];c2.style.display=cv!=null?'':'none';if(cv!=null){c2.setAttribute('cx',x);c2.setAttribute('cy',S.Y(cv))}
+ const vq=S.h[i][2],vol=vq?' · vol '+(vq>=1e6?(vq/1e6).toFixed(1)+'M':vq>=1e3?(vq/1e3).toFixed(0)+'k':vq):'';
+ tx.textContent=(S.cmp?T+' '+S.fy(S.v[i])+' ('+money(S.h[i][1],Q.currency)+')'+(cv!=null?' · '+(CMP===Q.index[0]?Q.index[1]:CMP)+' '+S.fy(cv):''):money(S.v[i],Q.currency))+vol+' · '+new Date(S.h[i][0]*1e3).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',...(S.intra?{hour:'2-digit',minute:'2-digit'}:{}),timeZone:Q.tz});
+ const tw=tx.getComputedTextLength()+10,lx=Math.min(Math.max(x-tw/2,S.L),S.w-tw);rc.setAttribute('x',lx);rc.setAttribute('width',tw);rc.setAttribute('y',0);tx.setAttribute('x',lx+5);tx.setAttribute('y',11)}
+document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closest('#sp'))cxMove(e);else if(e.pointerType==='mouse'){const g=document.querySelector('#cx');if(g)g.style.display='none'}});
+document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#sp'))cxMove(e)});
+// ---- render ----
+const val=s=>{const v=PF[s]||{},na='<span class="mut">n/a</span>';return `<td>${v.pe!=null?f(v.pe,1)+'x'+(v.pe_type==='F'?'<sup class="mut" title="Forward P/E (trailing EPS negative or missing)">fwd</sup>':''):na}</td><td>${v.ev_ebitda!=null?f(v.ev_ebitda,1)+'x':na}</td><td>${v.div_yield!=null?f(v.div_yield,1)+'%':na}</td>`};
+function render(){if(!Q)return;const q=Q,fv=PF[T]||{},lt=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:q.tz});
+ const cur=q.currency==='GBp'?'GBp (pence)':q.currency;let s='';
+ s+=`<section class="t wide"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><div><h2 style="margin:0">${esc(q.name)} <span class="mut">${esc(T)}</span></h2>
+ <span class="big">${money(q.price,q.currency)}</span> <span style="font-size:18px">${q.chg!=null?`<span class="${q.chg>=0?'up':'dn'}">${q.chg>=0?'+':''}${money(q.chg,q.currency)}</span> `:''}${pc(q.chg_pct)}</span></div>
+ <div style="text-align:right"><span class="badge ${q.open?'open':''}">${q.open?'Market open':'Market closed'}</span><div class="mut">${esc(q.ex)} · local time ${lt} (${esc(q.tz)})</div><div class="mut">Currency ${esc(cur)}</div><div class="mut">Last price ${new Date(q.asof).toLocaleString('en-GB',{dateStyle:'short',timeStyle:'short'})} (your time)</div></div></div></section>`;
+ s+=`<section class="t wide">${spark(CH)}</section>`;
+ const row=(sym,me)=>{const r=PQ[sym]||{};return `<tr><td>${me?'<b>'+esc(sym)+'</b>':`<a href="?t=${encodeURIComponent(sym)}" onclick="go('${esc(sym)}');return false">${esc(sym)}</a>`}</td><td>${r.ok?money(r.price,r.currency):'<span class="mut">n/a</span>'}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td>${val(sym)}<td>${me?'':`<button class="x" title="Remove" onclick="rmPeer('${esc(sym)}')">×</button>`}</td></tr>`};
+ s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Ticker</th><th>Price</th><th>1D</th><th>1M</th><th>YTD</th><th title="Trailing P/E unless marked fwd">P/E</th><th>EV/EBITDA</th><th>Yield</th><th></th></tr>${row(T,1)}${PEERS.map(p=>row(p)).join('')}</table>
+ <div style="margin-top:6px"><input id="pa" class="in" placeholder="Add ticker" size="10" onkeydown="if(event.key==='Enter')addPeer()"> <button class="chip" onclick="addPeer()">Add</button> <button class="chip" onclick="resetPeers()">Reset to auto</button></div><div class="mut">Auto peers: same industry and market by size (Yahoo), else Yahoo's similar symbols. Your edits are saved in this browser. Valuations computed in USD, daily.</div></section>`;
+ s+=`<section class="t"><h2>Key stats</h2><div class="kv"><span>Market cap (USD)</span><b>${big(fv.mcap_usd)}</b><span>52-week range</span><b>${money(q.lo52,q.currency)} – ${money(q.hi52,q.currency)}</b><span>P/E</span><b>${fv.pe!=null?f(fv.pe,1)+'x'+(fv.pe_type==='F'?' <span class="mut">fwd</span>':''):'<span class="mut">n/a</span>'}</b><span>Dividend yield</span><b>${fv.div_yield!=null?f(fv.div_yield,1)+'%':'<span class="mut">n/a</span>'}</b><span>1M / YTD</span><b>${pc(q.m1)} / ${pc(q.ytd)}</b></div><div class="mut">P/E, yield and market cap from Yahoo fundamentals (daily), computed in USD.</div></section>`;
+ const n=(NW.items||[]);s+=`<section class="t"><h2>News</h2>${n.length?'<ul>'+n.map(i=>`<li><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a> <span class="mut">${i.ts?new Date(i.ts*1e3).toLocaleDateString('en-GB'):''}</span></li>`).join('')+'</ul>':'<div class="mut">'+(NW.ok?'No recent news':'Loading…')+'</div>'}<div class="mut">Yahoo Finance headlines</div></section>`;
+ if(/\.L$/.test(T)){const r=NW.rns||{};s+=`<section class="t"><h2>RNS <span class="mut">(Investegate, UK times)</span></h2>${r.ok?'<table>'+r.items.map(i=>`<tr><td><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a></td><td class="mut">${i.date} ${i.time}</td></tr>`).join('')+'</table>':'<div class="mut">'+(NW.ok?'RNS unavailable for this ticker':'Loading…')+'</div>'}</section>`}
+ $('#m').innerHTML=s}
+setInterval(async()=>{if(!T)return;const t=T,q=await wget('/s/quote?t='+encodeURIComponent(t));if(T===t&&q.ok){Q=q;render()}if(CR==='1d')setR('1d')},2*60*1000);
+drawRec();const u=new URLSearchParams(location.search).get('t');if(u)go(u);else{const r=LS('recent',[]);if(r[0])go(r[0])}
+</script></body></html>
