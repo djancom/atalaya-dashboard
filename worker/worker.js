@@ -163,6 +163,21 @@ async function dShfe() {  // SHFE weekly warehouse report (Fridays), copper sect
   }
   throw new Error("no SHFE report");
 }
+async function comexHist() {  // meiyuanhuanliu.com embeds ~1y of CME copper stocks (short tons) as chartData
+  const t = await (await get("https://www.meiyuanhuanliu.com/copper_stocks/", 12000)).text();
+  const d = JSON.parse(t.match(/const chartData = (\{[\s\S]*?\});/)[1]);
+  return d.labels.map((l, i) => [Date.parse(l + "T12:00:00Z") / 1000, Math.round(d.total[i] * 0.90718474)]).filter(p => p[1] > 0);
+}
+async function stocks(env) {
+  const o = { asof: iso(Date.now()), ok: true };
+  await Promise.all([
+    lme("1y", 2).then(x => o.lme = x.pts).catch(() => o.lme = []),
+    comexHist().then(x => o.comex = x).catch(() => o.comex = []),
+    env.DAILY.get("shfehist").then(v => o.shfe = JSON.parse(v || "[]").map(([d, t]) => [Date.parse(d + "T12:00:00Z") / 1000, t])).catch(() => o.shfe = [])]);
+  const cut = Date.now() / 1000 - 366 * 86400; for (const k of ["comex", "shfe"]) o[k] = o[k].filter(p => p[0] >= cut);
+  if (!o.lme.length && !o.comex.length && !o.shfe.length) throw new Error("no stocks");
+  return o;
+}
 async function dDiesel() {
   const pg = await (await get("https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en")).text();
   const href = pg.match(/href="(\/document\/download\/[^"]+prices%20with%20Taxes[^"]*)"/)[1].replace(/&amp;/g, "&");
@@ -220,6 +235,10 @@ async function refreshDaily(env) {
     try { out[k] = await fn(); } catch (e) { out.errors[k] = String(e).slice(0, 150); if (old[k]) out[k] = { ...old[k], ok: false }; }
   }));
   await env.DAILY.put("daily", JSON.stringify(out));
+  if (out.shfe && out.shfe.ok) {  // log SHFE weekly figure into its history
+    const h = JSON.parse((await env.DAILY.get("shfehist")) || "[]");
+    if (!h.some(x => x[0] === out.shfe.date)) { h.push([out.shfe.date, out.shfe.t]); h.sort(); await env.DAILY.put("shfehist", JSON.stringify(h.slice(-120))); }
+  }
   return out;
 }
 
@@ -240,6 +259,7 @@ export default {
     if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo", s = url.searchParams.get("symbol") || "ATYM.L"; if (RANGES[r] && SYMS.includes(s)) { route = [() => chart(r, s), RANGES[r][2]]; ck += "?v=2&range=" + r + "&symbol=" + s; } }
     if (url.pathname === "/lme") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r] && r !== "1d") { route = [() => lme(r), 3600]; ck += "?range=" + r; } }
     if (url.pathname === "/inv") { route = [async () => { const o = { asof: iso(Date.now()) }; await Promise.all([["comex", dComex], ["shfe", dShfe]].map(async ([k, fn]) => { try { o[k] = await fn(); } catch (e) { } })); if (!o.comex && !o.shfe) throw new Error("no inv"); return o; }, 21600]; }
+    if (url.pathname === "/stocks") { route = [() => stocks(env), 21600]; ck += "?v=1"; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;

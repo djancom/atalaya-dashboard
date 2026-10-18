@@ -15,7 +15,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right
 <main id="m">Loading…</main>
 <section class="t" style="margin:0 12px"><h2>On X</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Atalaya%20Mining%22&amp;f=live">&quot;Atalaya Mining&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%24ATYM%20OR%20ATYM.L&amp;f=live">$ATYM OR ATYM.L</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Touro%20copper%20OR%20%22Proyecto%20Touro%22&amp;f=live">Touro copper OR &quot;Proyecto Touro&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Riotinto%20copper%20Atalaya&amp;f=live">Riotinto copper Atalaya</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Masa%20Valverde%22&amp;f=live">&quot;Masa Valverde&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=E-LIX%20Atalaya&amp;f=live">E-LIX Atalaya</a></div><div class="mut">Opens X search, latest first.</div></section>
 <section class="t" style="margin:12px 12px 0"><h2>Bulletin boards</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://www.lse.co.uk/ShareChat.html?ShareTicker=ATYM">London South East: ATYM chat</a><a class="xb" target="_blank" rel="noopener" href="https://uk.advfn.com/stock-market/london/atalaya-mining-copper-ATYM/share-chat">ADVFN: ATYM board</a></div></section>
-<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; COMEX stocks via MetalCharts; SHFE weekly; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
+<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; COMEX stocks via MetalCharts (history: meiyuanhuanliu.com); SHFE weekly; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
 <script>
 const $=s=>document.querySelector(s),f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pp=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v,1)} pp</span>`;const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
@@ -66,18 +66,22 @@ document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closes
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#cp'))cpMove(e)});
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,e=>{if(e.pointerType!=='mouse')cpHide()}));
 document.addEventListener('pointerleave',e=>{if(e.target.id==='cp')cpHide()},true);
-let LS=[],IV={};function lsChart(w=300,ht=110){if(LS.length<2)return '<div class="mut">LME stock history unavailable</div>';
- const ts=LS.map(p=>p[0]),vs=LS.map(p=>p[1]),t0=ts[0],t1=ts.at(-1),mn=Math.min(...vs),mx=Math.max(...vs),r=mx-mn||1,L=34,ph=ht-14,pw=w-L;
- const X=t=>L+(t-t0)/((t1-t0)||1)*pw,Y=v=>ph-4-(v-mn)/r*(ph-8),fx=t=>new Date(t*1e3).toLocaleDateString('en-GB',{month:'short',year:'2-digit',timeZone:'Europe/London'});
+let LS={},IV={};const LSS=[['lme','LME','#64b5f6'],['comex','COMEX','#e8a165'],['shfe','SHFE','#81c784']];
+function lsChart(w=300,ht=120){const A=LSS.map(([k])=>LS[k]||[]),all=A.flat();if(all.length<2)return '<div class="mut">Stock history unavailable</div>';
+ const ts=all.map(p=>p[0]),t0=Math.min(...ts),t1=Math.max(...ts),mx=Math.max(...all.map(p=>p[1]))*1.05,L=34,ph=ht-14,pw=w-L;
+ const X=t=>L+(t-t0)/((t1-t0)||1)*pw,Y=v=>ph-2-v/mx*(ph-4),fx=t=>new Date(t*1e3).toLocaleDateString('en-GB',{month:'short',year:'2-digit',timeZone:'Europe/London'});
  window.LSC={X,Y,t0,t1,w,L,pw};
- const yl=[mx,(mn+mx)/2,mn].map((y,i)=>`<text x="${L-4}" y="${(4+i*(ph-8)/2+3).toFixed(1)}" text-anchor="end">${f(y/1000,0)}k</text>`).join('');
+ const yl=[mx,mx/2,0].map((y,i)=>`<text x="${L-4}" y="${(Y(y)+3+(i?0:6)).toFixed(1)}" text-anchor="end">${f(y/1000,0)}k</text>`).join('');
  const xl=[0,.5,1].map(q=>`<text x="${(L+q*pw).toFixed(1)}" y="${ht-2}" text-anchor="${q?q<1?'middle':'end':'start'}">${fx(t0+q*(t1-t0))}</text>`).join('');
- return `<svg id="ls" viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;margin-top:6px;font:10px system-ui;fill:#8a96a3;touch-action:pan-y"><polyline fill="none" stroke="#64b5f6" stroke-width="1.8" points="${LS.map(p=>X(p[0]).toFixed(1)+','+Y(p[1]).toFixed(1)).join(' ')}"/>${yl}${xl}<g id="lsx" style="display:none;pointer-events:none"><line y1="0" y2="${ph}" stroke="#8a96a3"/><circle r="3" fill="#64b5f6" stroke="#fff" stroke-width=".8"/><rect rx="3" height="16" fill="#0f1419" stroke="#b87333" stroke-width=".8"/><text fill="#e6e6e6"></text></g></svg><div class="mut">LME copper stocks (t), 1 year, daily · Westmetall</div>`}
+ const lines=LSS.map(([k,,c],i)=>A[i].length?`<polyline fill="none" stroke="${c}" stroke-width="1.6" points="${A[i].map(p=>X(p[0]).toFixed(1)+','+Y(p[1]).toFixed(1)).join(' ')}"/>`:'').join('');
+ const lg=LSS.map(([k,n,c])=>`<span style="color:${c}">━ ${n}${k==='shfe'?' (weekly)':''}</span>`).join(' &nbsp;');
+ return `<div style="font-size:11px;margin-top:8px">${lg}</div><svg id="ls" viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;font:10px system-ui;fill:#8a96a3;touch-action:pan-y">${lines}${yl}${xl}<g id="lsx" style="display:none;pointer-events:none"><line y1="0" y2="${ph}" stroke="#8a96a3"/>${LSS.map(([,,c])=>`<circle r="3" fill="${c}" stroke="#fff" stroke-width=".8"/>`).join('')}<rect rx="3" height="16" fill="#0f1419" stroke="#b87333" stroke-width=".8"/><text fill="#e6e6e6" style="font-size:9px"></text></g></svg><div class="mut">Copper stocks (t), 1 year · LME: Westmetall · COMEX: CME via meiyuanhuanliu.com · SHFE: weekly report</div>`}
 function lsMove(e){const s=document.getElementById('ls'),S=window.LSC;if(!s||!S)return;const b=s.getBoundingClientRect(),t=S.t0+((e.clientX-b.left)/b.width*S.w-S.L)/S.pw*(S.t1-S.t0);
- const p=LS.reduce((a,q)=>Math.abs(q[0]-t)<Math.abs(a[0]-t)?q:a),g=s.querySelector('#lsx'),[ln,c,rc,tx]=g.children,x=S.X(p[0]);g.style.display='';
- ln.setAttribute('x1',x);ln.setAttribute('x2',x);c.setAttribute('cx',x);c.setAttribute('cy',S.Y(p[1]));
- tx.textContent=new Date(p[0]*1e3).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Europe/London'})+' · '+f(p[1],0)+' t';
- const tw=tx.getComputedTextLength()+10,lx=Math.min(Math.max(x-tw/2,S.L),S.w-tw);rc.setAttribute('x',lx);rc.setAttribute('width',tw);rc.setAttribute('y',0);tx.setAttribute('x',lx+5);tx.setAttribute('y',11)}
+ const near=a=>a&&a.length?a.reduce((p,q)=>Math.abs(q[0]-t)<Math.abs(p[0]-t)?q:p):null,g=s.querySelector('#lsx'),[ln,...rest]=g.children,tx=rest.pop(),rc=rest.pop(),x=Math.min(Math.max((e.clientX-b.left)/b.width*S.w,S.L),S.w);g.style.display='';
+ ln.setAttribute('x1',x);ln.setAttribute('x2',x);
+ const v=LSS.map(([k],i)=>{const p=near(LS[k]);const ok=p&&Math.abs(p[0]-t)<(k==='shfe'?6:4)*86400;rest[i].style.display=ok?'':'none';if(ok){rest[i].setAttribute('cx',S.X(p[0]));rest[i].setAttribute('cy',S.Y(p[1]))}return ok?p[1]:null});
+ tx.textContent=new Date(t*1e3).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit',timeZone:'Europe/London'})+' · '+LSS.map(([,n],i)=>n+' '+(v[i]!=null?f(v[i]/1000,0)+'k':'–')).join(' · ');
+ const tw=tx.getComputedTextLength()+10,lx=Math.min(Math.max(x-tw/2,0),S.w-tw);rc.setAttribute('x',lx);rc.setAttribute('width',tw);rc.setAttribute('y',0);tx.setAttribute('x',lx+5);tx.setAttribute('y',11)}
 document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closest('#ls'))lsMove(e);else{const g=document.querySelector('#lsx');if(g&&e.pointerType==='mouse')g.style.display='none'}});
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#ls'))lsMove(e)});
 let CR='1mo',CHD=null;const RL={'1d':'1D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
@@ -102,7 +106,7 @@ function merged(){const d={...B};
  const g=[B.generated,P.generated,S.generated,DY.generated].filter(Boolean).sort().pop();d.generated=g;return d}
 async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
 async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
-async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/lmestock').then(x=>LS=x.pts||[]),wget('/inv').then(x=>IV=x)]);render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>LS=x||{}),wget('/inv').then(x=>IV=x)]);render()}
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
