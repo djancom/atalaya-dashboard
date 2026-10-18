@@ -83,13 +83,13 @@ async function slow() {
 
 const RANGES = { "1d": ["1d", "5m", 120], "1mo": ["1mo", "1d", 3600], "3mo": ["3mo", "1d", 3600], "6mo": ["6mo", "1d", 3600], "1y": ["1y", "1d", 3600], "5y": ["5y", "1wk", 3600] };
 const SYMS = ["ATYM.L", "HG=F"];
-async function lme(r) {
+async function lme(r, col = 0) {
   const yrs = { "1mo": 1, "3mo": 1, "6mo": 1, "1y": 2, "5y": 6 }[r], Y = new Date().getUTCFullYear(), M = {};
   "January February March April May June July August September October November December".split(" ").forEach((m, i) => M[m] = i);
   const pages = await Promise.all([...Array(yrs).keys()].map(k => get(`https://www.westmetall.com/en/markdaten.php?action=table&field=LME_Cu_cash${k ? "&year=" + (Y - k) : ""}`).then(x => x.text()).catch(() => "")));
   const pts = [];
-  for (const t of pages) for (const m of t.matchAll(/<td[^>]*>(\d{2})\. (\w+) (\d{4})<\/td>\s*<td[^>]*>([\d,.]+)<\/td>/g))
-    pts.push([Date.UTC(+m[3], M[m[2]], +m[1], 12) / 1000, +m[4].replace(/,/g, "")]);
+  for (const t of pages) for (const m of t.matchAll(/<td[^>]*>(\d{2})\. (\w+) (\d{4})<\/td>\s*<td[^>]*>([\d,.]+)<\/td>\s*<td[^>]*>([\d,.]+)<\/td>\s*<td[^>]*>([\d,.]+)<\/td>/g))
+    pts.push([Date.UTC(+m[3], M[m[2]], +m[1], 12) / 1000, +m[4 + col].replace(/,/g, "")]);
   const days = { "1mo": 31, "3mo": 92, "6mo": 183, "1y": 366, "5y": 1827 }[r], cut = Date.now() / 1000 - days * 86400;
   const out = [...new Map(pts.filter(p => p[0] >= cut).map(p => [p[0], p])).values()].sort((a, b) => a[0] - b[0]);
   if (!out.length) throw new Error("no LME rows");
@@ -145,6 +145,24 @@ async function dLme() {
   const n = s => +s.replace(/,/g, ""), r = rows[0], date = `${r[3]}-${String(M[r[2]]).padStart(2, "0")}-${r[1]}`;
   return { lme_cash: n(r[4]), lme_3m: n(r[5]), lme_stock: n(r[6]), lme_date: date, lme_prev: rows[1] ? n(rows[1][4]) : null, asof: date + "T17:00:00Z", ok: true };
 }
+async function dComex() {  // MetalCharts public page (server-rendered text); CME's own file blocks bots
+  const t = (await (await get("https://metalcharts.org/comex/copper")).text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const m = t.match(/As of (\w+ \d{1,2}, \d{4}) , COMEX copper warehouses hold ([\d,]+) short tons/);
+  if (!m) throw new Error("COMEX text not found");
+  const st = +m[2].replace(/,/g, ""), date = new Date(m[1] + " 12:00 UTC").toISOString().slice(0, 10);
+  return { t: Math.round(st * 0.90718474), st, date, asof: date + "T22:00:00Z", source: "MetalCharts (CME data)", ok: true };
+}
+async function dShfe() {  // SHFE weekly warehouse report (Fridays), copper section total
+  for (let k = 0; k < 21; k++) {
+    const d = new Date(Date.now() - k * 864e5); if (d.getUTCDay() !== 5 && d.getUTCDay() !== 4 && d.getUTCDay() !== 3) continue;
+    const ds = d.toISOString().slice(0, 10), r = await fetch(`https://www.shfe.com.cn/data/tradedata/future/stockdata/weeklystock_${ds.replace(/-/g, "")}/ZH/all.html`, { headers: UA, signal: AbortSignal.timeout(8000) }).catch(() => null);
+    if (!r || !r.ok) continue;
+    const t = (await r.text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " "), i = t.indexOf(" 铜 单位"); if (i < 0) continue;
+    const m = t.slice(i).match(/ 总计 ([\d,]+) [\d,]+ ([\d,]+) /); if (!m) continue;
+    return { t: +m[2].replace(/,/g, ""), date: ds, asof: ds + "T08:00:00Z", source: "SHFE weekly", ok: true };
+  }
+  throw new Error("no SHFE report");
+}
 async function dDiesel() {
   const pg = await (await get("https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en")).text();
   const href = pg.match(/href="(\/document\/download\/[^"]+prices%20with%20Taxes[^"]*)"/)[1].replace(/&amp;/g, "&");
@@ -195,7 +213,7 @@ async function dVal() {
 }
 async function refreshDaily(env) {
   const old = JSON.parse((await env.DAILY.get("daily")) || "{}"), out = { generated: iso(Date.now()), errors: {} };
-  const jobs = { gas: dGas, power: dPower, lme: dLme, diesel: dDiesel, news };
+  const jobs = { gas: dGas, power: dPower, lme: dLme, comex: dComex, shfe: dShfe, diesel: dDiesel, news };
   const fresh = old.val && old.val.ok !== false && Date.now() - Date.parse(old.val.asof) < 20 * 3600e3 && old.val.v === 2;
   if (fresh) out.val = old.val; else jobs.val = dVal;  // valuations once per day
   await Promise.all(Object.entries(jobs).map(async ([k, fn]) => {
@@ -221,6 +239,8 @@ export default {
     let ck = url.pathname;
     if (url.pathname === "/chart") { const r = url.searchParams.get("range") || "1mo", s = url.searchParams.get("symbol") || "ATYM.L"; if (RANGES[r] && SYMS.includes(s)) { route = [() => chart(r, s), RANGES[r][2]]; ck += "?v=2&range=" + r + "&symbol=" + s; } }
     if (url.pathname === "/lme") { const r = url.searchParams.get("range") || "1mo"; if (RANGES[r] && r !== "1d") { route = [() => lme(r), 3600]; ck += "?range=" + r; } }
+    if (url.pathname === "/inv") { route = [async () => { const o = { asof: iso(Date.now()) }; await Promise.all([["comex", dComex], ["shfe", dShfe]].map(async ([k, fn]) => { try { o[k] = await fn(); } catch (e) { } })); if (!o.comex && !o.shfe) throw new Error("no inv"); return o; }, 21600]; }
+    if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
     let res = await cache.match(key);

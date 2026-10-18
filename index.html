@@ -15,7 +15,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right
 <main id="m">Loading…</main>
 <section class="t" style="margin:0 12px"><h2>On X</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Atalaya%20Mining%22&amp;f=live">&quot;Atalaya Mining&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%24ATYM%20OR%20ATYM.L&amp;f=live">$ATYM OR ATYM.L</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Touro%20copper%20OR%20%22Proyecto%20Touro%22&amp;f=live">Touro copper OR &quot;Proyecto Touro&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Riotinto%20copper%20Atalaya&amp;f=live">Riotinto copper Atalaya</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Masa%20Valverde%22&amp;f=live">&quot;Masa Valverde&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=E-LIX%20Atalaya&amp;f=live">E-LIX Atalaya</a></div><div class="mut">Opens X search, latest first.</div></section>
 <section class="t" style="margin:12px 12px 0"><h2>Bulletin boards</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://www.lse.co.uk/ShareChat.html?ShareTicker=ATYM">London South East: ATYM chat</a><a class="xb" target="_blank" rel="noopener" href="https://uk.advfn.com/stock-market/london/atalaya-mining-copper-ATYM/share-chat">ADVFN: ATYM board</a></div></section>
-<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
+<footer class="mut" style="padding:10px 20px">Free delayed data (Yahoo/Stooq ~15–20 min; LME end-of-day via Westmetall; COMEX stocks via MetalCharts; SHFE weekly; MIBGAS; REE). Not investment advice. Prices refresh every 2 min, news/RNS every 10 min, daily data hourly.</footer>
 <script>
 const $=s=>document.querySelector(s),f=(v,d=2)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pp=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v,1)} pp</span>`;const pc=v=>v==null?'–':`<span class="${v>=0?'up':'dn'}">${v>=0?'+':''}${f(v)}%</span>`;
@@ -66,6 +66,20 @@ document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closes
 document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#cp'))cpMove(e)});
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,e=>{if(e.pointerType!=='mouse')cpHide()}));
 document.addEventListener('pointerleave',e=>{if(e.target.id==='cp')cpHide()},true);
+let LS=[],IV={};function lsChart(w=300,ht=110){if(LS.length<2)return '<div class="mut">LME stock history unavailable</div>';
+ const ts=LS.map(p=>p[0]),vs=LS.map(p=>p[1]),t0=ts[0],t1=ts.at(-1),mn=Math.min(...vs),mx=Math.max(...vs),r=mx-mn||1,L=34,ph=ht-14,pw=w-L;
+ const X=t=>L+(t-t0)/((t1-t0)||1)*pw,Y=v=>ph-4-(v-mn)/r*(ph-8),fx=t=>new Date(t*1e3).toLocaleDateString('en-GB',{month:'short',year:'2-digit',timeZone:'Europe/London'});
+ window.LSC={X,Y,t0,t1,w,L,pw};
+ const yl=[mx,(mn+mx)/2,mn].map((y,i)=>`<text x="${L-4}" y="${(4+i*(ph-8)/2+3).toFixed(1)}" text-anchor="end">${f(y/1000,0)}k</text>`).join('');
+ const xl=[0,.5,1].map(q=>`<text x="${(L+q*pw).toFixed(1)}" y="${ht-2}" text-anchor="${q?q<1?'middle':'end':'start'}">${fx(t0+q*(t1-t0))}</text>`).join('');
+ return `<svg id="ls" viewBox="0 0 ${w} ${ht}" style="width:100%;height:${ht}px;margin-top:6px;font:10px system-ui;fill:#8a96a3;touch-action:pan-y"><polyline fill="none" stroke="#64b5f6" stroke-width="1.8" points="${LS.map(p=>X(p[0]).toFixed(1)+','+Y(p[1]).toFixed(1)).join(' ')}"/>${yl}${xl}<g id="lsx" style="display:none;pointer-events:none"><line y1="0" y2="${ph}" stroke="#8a96a3"/><circle r="3" fill="#64b5f6" stroke="#fff" stroke-width=".8"/><rect rx="3" height="16" fill="#0f1419" stroke="#b87333" stroke-width=".8"/><text fill="#e6e6e6"></text></g></svg><div class="mut">LME copper stocks (t), 1 year, daily · Westmetall</div>`}
+function lsMove(e){const s=document.getElementById('ls'),S=window.LSC;if(!s||!S)return;const b=s.getBoundingClientRect(),t=S.t0+((e.clientX-b.left)/b.width*S.w-S.L)/S.pw*(S.t1-S.t0);
+ const p=LS.reduce((a,q)=>Math.abs(q[0]-t)<Math.abs(a[0]-t)?q:a),g=s.querySelector('#lsx'),[ln,c,rc,tx]=g.children,x=S.X(p[0]);g.style.display='';
+ ln.setAttribute('x1',x);ln.setAttribute('x2',x);c.setAttribute('cx',x);c.setAttribute('cy',S.Y(p[1]));
+ tx.textContent=new Date(p[0]*1e3).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Europe/London'})+' · '+f(p[1],0)+' t';
+ const tw=tx.getComputedTextLength()+10,lx=Math.min(Math.max(x-tw/2,S.L),S.w-tw);rc.setAttribute('x',lx);rc.setAttribute('width',tw);rc.setAttribute('y',0);tx.setAttribute('x',lx+5);tx.setAttribute('y',11)}
+document.addEventListener('pointermove',e=>{if(e.target.closest&&e.target.closest('#ls'))lsMove(e);else{const g=document.querySelector('#lsx');if(g&&e.pointerType==='mouse')g.style.display='none'}});
+document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#ls'))lsMove(e)});
 let CR='1mo',CHD=null;const RL={'1d':'1D','1mo':'1M','3mo':'3M','6mo':'6M','1y':'1Y','5y':'5Y'};
 async function setR(r){CR=r;const j=await wget('/chart?v=2&symbol=ATYM.L&range='+r);CHD=j.pts||null;render()}
 const EX={LSE:['Europe/London',480,990],NYSE:['America/New_York',570,960],TSX:['America/Toronto',570,960],ASX:['Australia/Sydney',600,960],XETRA:['Europe/Berlin',540,1050],TSE:['Asia/Tokyo',540,930],HKEX:['Asia/Hong_Kong',570,960]};
@@ -81,13 +95,14 @@ const vc=s=>{const v=((DY.val||{}).rows||{})[s]||{},na='<span class="mut">n/a</s
 function merged(){const d={...B};
  for(const k of ['gas','power','diesel','news']){const v=DY[k];if(v&&v.ok!==false&&newer(d[k],v))d[k]={...(d[k]||{}),...v}}
  if(DY.lme&&DY.lme.ok!==false&&(!d.copper||!d.copper.lme_date||DY.lme.lme_date>=d.copper.lme_date)){d.copper={...(d.copper||{}),...Object.fromEntries(Object.entries(DY.lme).filter(([k])=>k.startsWith('lme_')))};d.inventories={...(d.inventories||{}),lme:{t:DY.lme.lme_stock,date:DY.lme.lme_date}}}
+ for(const k of ['comex','shfe']){const v=(IV[k]&&IV[k].t)?IV[k]:DY[k];if(v&&v.t&&(v.ok!==false||!(d.inventories||{})[k]))d.inventories={...(d.inventories||{}),[k]:{t:v.t,date:v.date,stale:v.ok===false}}}
  for(const k of ['atym','fx','ttf','peers','rns','news']){const v=P[k]||S[k];if(v&&newer(d[k],v))d[k]=v}
  if(P.copper&&newer(d.copper,P.copper))d.copper={...d.copper,...P.copper};if(d.copper&&d.copper.lme_cash&&d.copper.comex_t)d.copper={...d.copper,spread_t:Math.round((d.copper.comex_t-d.copper.lme_cash)*10)/10};
  if(P.peer_rows&&d.peers){const m=Object.fromEntries(P.peer_rows.map(r=>[r.sym,r]));d.peers={...d.peers,rows:d.peers.rows.map(r=>m[r.sym]||r)}}
  const g=[B.generated,P.generated,S.generated,DY.generated].filter(Boolean).sort().pop();d.generated=g;return d}
 async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
 async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
-async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x)]);render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/lmestock').then(x=>LS=x.pts||[]),wget('/inv').then(x=>IV=x)]);render()}
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
@@ -111,7 +126,7 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  ${row('ICE low-sulphur gasoil','','daily',null,0)}
  </div></section>`;
  const inv=(k,u)=>iv[k]?`<b>${f(iv[k].t,0)} t${iv[k].stale?'<span class="badge">stale</span>':''}</b><span class="mut">${iv[k].date||''}</span>`:'<b class="mut">unavailable</b><span></span>';
- s+=`<section class="t"><h2>Copper inventories</h2><div class="kv" style="grid-template-columns:1fr auto auto"><span>LME</span>${inv('lme')}<span>COMEX</span>${inv('comex')}<span>SHFE (weekly)</span>${inv('shfe')}</div><div class="mut">Best-effort, daily/weekly.</div></section>`;
+ s+=`<section class="t"><h2>Copper inventories</h2><div class="kv" style="grid-template-columns:1fr auto auto"><span>LME</span>${inv('lme')}<span title="Registered + eligible, converted from short tons">COMEX</span>${inv('comex')}<span>SHFE (weekly)</span>${inv('shfe')}</div><div class="mut">Best-effort: LME via Westmetall, COMEX via MetalCharts (CME data), SHFE weekly report.</div>${lsChart()}</section>`;
  s+=`<section class="t"><h2>Copper price: COMEX vs LME ($/t)</h2>${cuChart()}</section>`;
  s+=`<section class="t"><h2>Markets</h2><table>${(((P.markets)||{}).rows||[]).map(r=>`<tr><td>${r.name} ${mk(r.ex)}</td><td>${r.unavailable?'<span class="mut">n/a</span>':f(r.price,r.price<100?2:r.price<1000?2:0)}</td><td>${r.unavailable?'':pc(r.chg_pct)}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${P.markets?asof(P.markets,H):''}</section>`;
  s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th><th title="Trailing P/E unless marked fwd (forward)">P/E</th><th>EV/EBITDA</th><th>Yield</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span> ${mk(exOf(r.sym))}${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td>${vc(r.sym)}</tr>`).join('')}
