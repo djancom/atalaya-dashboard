@@ -1,7 +1,7 @@
 // Free Cloudflare Worker: on-demand delayed prices (2 min cache) and RNS/news (10 min cache). No keys.
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" };
 const LB = 2204.62262;
-const PEERS = [["FCX","Freeport-McMoRan"],["ANTO.L","Antofagasta"],["SCCO","Southern Copper"],["FM.TO","First Quantum"],["LUN.TO","Lundin Mining"],["CS.TO","Capstone Copper"],["HBM","Hudbay"],["CAML.L","Central Asia Metals"],["SFR.AX","Sandfire"]];
+const PEERS = [["FCX","Freeport-McMoRan"],["ANTO.L","Antofagasta"],["SCCO","Southern Copper"],["FM.TO","First Quantum"],["LUN.TO","Lundin Mining"],["CS.TO","Capstone Copper"],["HBM","Hudbay"],["CAML.L","Central Asia Metals"],["SFR.AX","Sandfire"],["BHP.L","BHP"],["GLEN.L","Glencore"],["RIO.L","Rio Tinto"]];
 const MKTS = [["^FTMC", "FTSE 250", "LSE"], ["BRWM.L", "Miners (BRWM)", "LSE"], ["COPX", "Cu miners (COPX)", "NYSE"], ["^GSPC", "S&P 500", "NYSE"], ["^STOXX", "Stoxx 600", "XETRA"], ["^N225", "Nikkei 225", "TSE"], ["^HSI", "Hang Seng", "HKEX"],
   ["GC=F", "Gold ($/oz)", "CME"], ["SI=F", "Silver ($/oz)", "CME"], ["BZ=F", "Brent ($/bbl)", "CME"]];
 const FEEDS = ['"Atalaya Mining"','Riotinto copper','"Proyecto Touro"','"Masa Valverde"','"E-LIX"','"copper price"'];
@@ -350,7 +350,7 @@ async function valFor(syms) {
   const { H, crumb } = await ycrumb();
   // Yahoo mixes quote currency (e.g. GBp) and reporting currency (USD/EUR) in its ratios, so recompute everything in USD.
   const fxr = { USD: 1 };
-  await Promise.all(["GBP", "EUR", "CAD", "AUD", ...(syms.length > 10 || syms.every(x => /^(ATYM\.L|FCX|ANTO\.L|SCCO|FM\.TO|LUN\.TO|CS\.TO|HBM|CAML\.L|SFR\.AX)$/.test(x)) ? [] : ["JPY", "CHF", "HKD", "SEK", "NOK", "DKK", "INR", "KRW", "ZAR", "BRL", "CNY", "ILS"])].map(async c => { try { fxr[c] = (await yahoo(c + "USD=X")).price; } catch (e) { } }));
+  await Promise.all(["GBP", "EUR", "CAD", "AUD", ...(syms.length > 10 || syms.every(x => /^(ATYM\.L|FCX|ANTO\.L|SCCO|FM\.TO|LUN\.TO|CS\.TO|HBM|CAML\.L|SFR\.AX|BHP\.L|GLEN\.L|RIO\.L)$/.test(x)) ? [] : ["JPY", "CHF", "HKD", "SEK", "NOK", "DKK", "INR", "KRW", "ZAR", "BRL", "CNY", "ILS"])].map(async c => { try { fxr[c] = (await yahoo(c + "USD=X")).price; } catch (e) { } }));
   if (fxr.GBP) fxr.GBp = fxr.GBP / 100; if (fxr.ZAR) fxr.ZAc = fxr.ZAR / 100; if (fxr.ILS) fxr.ILA = fxr.ILS / 100;
   const out = {};
   await Promise.all(syms.map(async s => {
