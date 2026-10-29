@@ -118,6 +118,14 @@ async function chart(r, sym = "ATYM.L") {
   return { range: r, interval: iv, pts, asof: iso((res.meta.regularMarketTime || pts.at(-1)[0]) * 1000), ok: true };
 }
 
+// 1y daily closes for ATYM, copper, peers and COPX (for Signals z-scores). Cached 6h.
+async function peerhist() {
+  const syms = ["ATYM.L", "HG=F", "COPX", ...PEERS.map(p => p[0])], out = { s: {}, asof: iso(Date.now()), ok: true };
+  await Promise.all(syms.map(async s => { try { const c = await chart("1y", s); out.s[s] = c.pts.map(p => [p[0], p[1]]); } catch (e) { } }));
+  if (!out.s["ATYM.L"]) throw new Error("no ATYM hist");
+  return out;
+}
+
 // ---- any-stock dashboard (/s/*) ----
 const TK = /^[A-Za-z0-9.\-^=]{1,15}$/;
 const REG = { L: "gb", TO: "ca", V: "ca", AX: "au", DE: "de", F: "de", PA: "fr", MC: "es", AS: "nl", MI: "it", SW: "ch", HK: "hk", T: "jp", ST: "se", OL: "no", CO: "dk", HE: "fi", BR: "be", LS: "pt", IR: "ie", SA: "br", KS: "kr", NS: "in", BO: "in" };
@@ -425,6 +433,7 @@ export default {
     if (url.pathname === "/chile") { route = [chile, 86400]; ck += "?v=2"; }
     if (url.pathname === "/dc") { route = [dc, 86400]; ck += "?v=1"; }
     if (url.pathname === "/cumk") { route = [cumk, 21600]; ck += "?v=1"; }
+    if (url.pathname === "/peerhist") { route = [peerhist, 21600]; ck += "?v=1"; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
