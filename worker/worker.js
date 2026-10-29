@@ -90,6 +90,85 @@ async function news() {
   if (!out.length) throw new Error("no news");
   return { items: out.slice(0, 15), asof: iso(Date.now()), ok: true };
 }
+// Corporate calendar: dated ATYM events from Investegate RNS titles + bodies of notices/timetables, plus Yahoo calendarEvents.
+const MON = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+const DRE = "(\\d{1,2})(?:st|nd|rd|th)?\\s+(January|February|March|April|May|June|July|August|September|October|November|December),?\\s+(20\\d\\d)";
+const dIso = (d, m, y) => `${y}-${String(MON[m.toLowerCase()]).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+const calType = t => /notice of|placing|fundraise|share|holding|tr-?1|pdmr|director/i.test(t) && !/dividend|general meeting|agm/i.test(t) ? (/^notice of (?!.*physical)/i.test(t) ? "notice" : null)
+  : /dividend/i.test(t) ? "Dividend" : /\bAGM\b|general meeting|\bEGM\b/i.test(t) ? "AGM" : /results/i.test(t) && !/voting|placing/i.test(t) ? "Results" : /operations update|trading update|production/i.test(t) ? "Update" : null;
+function rnsList(t) {
+  const re = /<td>(\d{1,2}) (\w{3}) (\d{4})<\/td>\s*<td>(\d{1,2}):(\d{2}) ([AP]M)<\/td>[\s\S]*?class="announcement-link" href="([^"]+)">([^<]+)<\/a>/g;
+  const M = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+  const out = []; let m;
+  while ((m = re.exec(t))) { const h = +m[4] % 12 + (m[6] === "PM" ? 12 : 0); out.push({ date: `${m[3]}-${M[m[2]]}-${m[1].padStart(2, "0")}`, time: `${String(h).padStart(2, "0")}:${m[5]}`, link: m[7], title: unesc(m[8]) }); }
+  return out;
+}
+async function rnsBody(link) {
+  let t = await (await get(link, 6000)).text();
+  t = t.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ");
+  t = unesc(t).replace(/&nbsp;|&#160;/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ");
+  const i = t.lastIndexOf("Disclaimer*"); return i >= 0 ? t.slice(i) : t;  // skip Investegate's AI summary
+}
+function bodyEvents(r, x) {
+  const ev = [], add = (type, date, title, note) => date && ev.push({ date, type, title, note, link: r.link, src: "RNS notice " + r.date });
+  const tm = s => { const m = s && s.match(/(?:at|from) (\d{1,2}[:.]\d{2}\s*(?:GMT|BST|CET|CEST))/); return m ? m[1].replace(".", ":") : undefined; };
+  if (r.type === "Dividend" || /dividend/i.test(r.title)) {
+    const lbl = { "Ex-dividend": /ex[- ]dividend date\s*:?\s*(?:\w+day,?\s+)?/i, "Record": /record date\s*:?\s*(?:\w+day,?\s+)?/i, "Payment": /payment date\s*:?\s*(?:\w+day,?\s+)?/i };
+    const nm = (r.title.match(/(20\d\d )?(final|interim|special)?\s*dividend/i) || [r.title])[0].replace(/^\w/, c => c.toUpperCase());
+    for (const [k, re] of Object.entries(lbl)) { const m = x.match(new RegExp(re.source + DRE, "i")); if (m) add("Dividend", dIso(m[1], m[2], m[3]), `${nm}: ${k.toLowerCase()} date`); }
+  }
+  if (/^notice of/i.test(r.title) && /results/i.test(r.title)) {
+    const m = x.match(new RegExp("(?:release|publish|announce|report)[^.]{0,250}?\\bon\\s+(?:\\w+day,?\\s+)?" + DRE, "i"));
+    if (m) add("Results", dIso(m[1], m[2], m[3]), r.title.replace(/^notice of\s*/i, "").trim() || "Results", (x.match(/webcast[^.]{0,200}/i) || [])[0] && "webcast " + (tm((x.match(/webcast[^.]{0,200}/i) || [])[0]) || ""));
+  }
+  if (/general meeting|\bAGM\b|\bEGM\b/i.test(r.title) && !/voting|results/i.test(r.title)) {
+    const m = x.match(new RegExp("(?:Annual General|Extraordinary General|General)[^.]{0,300}?\\bon\\s+(?:\\w+day,?\\s+)?" + DRE + "([^.]{0,40})", "i"));
+    if (m) add("AGM", dIso(m[1], m[2], m[3]), /extraordinary|EGM/i.test(r.title) ? "Extraordinary General Meeting" : /annual|AGM/i.test(r.title) ? "Annual General Meeting" : "General Meeting", tm(m[4]));
+  }
+  return ev;
+}
+async function calendar(code = "ATYM", ysym = "ATYM.L") {
+  const today = new Date().toISOString().slice(0, 10), dAdd = (d, n) => new Date(Date.parse(d) + n * 864e5).toISOString().slice(0, 10);
+  const srcs = [];
+  const [ig, yh] = await Promise.all([safe(get("https://www.investegate.co.uk/company/" + code).then(r => r.text())), safe((async () => {
+    const { H, crumb } = await ycrumb();
+    const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ysym)}?modules=calendarEvents&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json();
+    return j.quoteSummary.result[0].calendarEvents || {};
+  })())]);
+  const ev = [];
+  if (typeof ig === "string") {
+    const list = rnsList(ig).map(r => ({ ...r, type: calType(r.title) })).filter(r => r.type);
+    srcs.push("Investegate RNS");
+    for (const r of list) if (r.type !== "notice" && !/^notice of|correction/i.test(r.title) && !(r.type === "Dividend" && /timetable/i.test(r.title))) ev.push({ date: r.date, time: r.time, type: r.type, title: r.title, link: r.link, src: "RNS" });
+    const want = list.filter(r => r.date >= dAdd(today, -400) && (r.type === "notice" || r.type === "Dividend" || (r.type === "AGM" && !/voting|results/i.test(r.title)))).slice(0, 10);
+    const bodies = await Promise.all(want.map(r => rnsBody(r.link).catch(() => "")));
+    want.forEach((r, i) => bodies[i] && ev.push(...bodyEvents(r, bodies[i])));
+    // Estimates: same-quarter events from a year ago that have no confirmed date yet
+    for (const r of list) if (["Results", "Update", "AGM"].includes(r.type) && r.type !== "notice") {
+      const p = dAdd(r.date, 364);
+      if (p > today && p <= dAdd(today, 150) && !ev.some(e => e.type === r.type && Math.abs(Date.parse(e.date) - Date.parse(p)) < 30 * 864e5))
+        ev.push({ date: p, type: r.type, title: r.title.replace(/\b(20\d\d)\b/g, y => +y + 1).trim(), est: true, note: "estimate: same week last year", link: r.link, src: "RNS " + r.date + " (+1y)" });
+    }
+  }
+  if (yh && yh.ok !== false) {
+    srcs.push("Yahoo Finance calendarEvents");
+    const d = x => x && x.raw ? new Date(x.raw * 1000).toISOString().slice(0, 10) : null;
+    for (const e of ((yh.earnings || {}).earningsDate || [])) ev.push({ date: d(e), type: "Results", title: "Earnings date", est: !!(yh.earnings || {}).isEarningsDateEstimate, src: "Yahoo" });
+    if (d(yh.exDividendDate)) ev.push({ date: d(yh.exDividendDate), type: "Dividend", title: "Ex-dividend date", src: "Yahoo" });
+    if (d(yh.dividendDate)) ev.push({ date: d(yh.dividendDate), type: "Dividend", title: "Dividend payment date", src: "Yahoo" });
+  }
+  // de-dupe same type+date: prefer RNS items with links, then notices, then Yahoo
+  const rank = e => (e.src === "RNS" ? 0 : e.src.startsWith("RNS notice") ? 1 : e.src === "Yahoo" ? 2 : 3);
+  const seen = new Map();
+  for (const e of ev.filter(e => e.date).sort((a, b) => rank(a) - rank(b))) {
+    const k = e.type + e.date + (e.type === "Dividend" ? e.title.replace(/.*: /, "").replace(/ex-dividend date/i, "ex").slice(0, 6) : "");
+    const prev = seen.get(k);
+    if (!prev) seen.set(k, e); else if (e.note && !prev.note) prev.note = e.note;
+  }
+  const events = [...seen.values()].filter(e => e.date >= dAdd(today, -60)).sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""));
+  if (!srcs.length) throw new Error("no calendar sources");
+  return { events, sources: srcs, asof: iso(Date.now()), ok: true };
+}
 async function slow() {
   const [r, n] = await Promise.all([safe(rns()), safe(news())]);
   const out = { generated: iso(Date.now()) }; if (r.ok) out.rns = r; if (n.ok) out.news = n; return out;
@@ -433,6 +512,7 @@ export default {
     if (url.pathname === "/chile") { route = [chile, 86400]; ck += "?v=2"; }
     if (url.pathname === "/dc") { route = [dc, 86400]; ck += "?v=1"; }
     if (url.pathname === "/cumk") { route = [cumk, 21600]; ck += "?v=1"; }
+    if (url.pathname === "/cal") { route = [() => calendar(), 10800]; ck += "?v=1"; }
     if (url.pathname === "/peerhist") { route = [peerhist, 21600]; ck += "?v=1"; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
