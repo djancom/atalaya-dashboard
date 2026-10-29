@@ -267,6 +267,40 @@ async function stocks(env) {
   if (!o.lme.length && !o.comex.length && !o.shfe.length) throw new Error("no stocks");
   return o;
 }
+async function cuMonthly() {  // COMEX HG=F monthly average, $/t
+  const j = await (await get("https://query1.finance.yahoo.com/v8/finance/chart/HG%3DF?range=10y&interval=1d", 12000)).json();
+  const r = j.chart.result[0], q = r.indicators.quote[0].close, M = {};
+  r.timestamp.forEach((t, i) => { if (q[i] == null) return; const k = new Date(t * 1000).toISOString().slice(0, 7); (M[k] = M[k] || []).push(q[i]); });
+  return Object.keys(M).sort().map(k => [k, Math.round(M[k].reduce((a, b) => a + b, 0) / M[k].length * LB)]);
+}
+async function dc() {  // US Census private construction spending, "Data center" column, $m SAAR, monthly
+  const buf = await (await get("https://www.census.gov/construction/c30/xlsx/privsatime.xlsx", 20000)).arrayBuffer();
+  const ss = [...(await unzipEntry(buf, "xl/sharedStrings.xml")).matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => m[1].replace(/<[^>]+>/g, "").trim());
+  const ti = ss.findIndex(x => /^Data center$/i.test(x)); if (ti < 0) throw new Error("no Data center");
+  const sh = await unzipEntry(buf, "xl/worksheets/sheet1.xml");
+  const hc = sh.match(new RegExp(`<c r="([A-Z]+)\\d+"[^>]*t="s"[^>]*><v>${ti}</v>`)); if (!hc) throw new Error("no dc col");
+  const col = hc[1], MO = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 }, pts = [];
+  for (const [, row] of sh.matchAll(/<row [^>]*>([\s\S]*?)<\/row>/g)) {
+    const a = row.match(/<c r="A\d+"[^>]*t="s"[^>]*><v>(\d+)<\/v>/), v = row.match(new RegExp(`<c r="${col}\\d+"[^>]*>(?:<f[^>]*(?:/>|>[^<]*</f>))?<v>([\\d.]+)</v>`));
+    const dm = a && (ss[+a[1]] || "").match(/^(\w{3})-(\d{2})(p|r)?/);
+    if (dm && v && +v[1] > 0 && MO[dm[1]]) pts.push([`${+dm[2] > 80 ? 19 : 20}${dm[2]}-${String(MO[dm[1]]).padStart(2, "0")}`, +v[1], dm[3] || ""]);
+  }
+  if (pts.length < 13) throw new Error("few dc rows");
+  pts.sort((x, y) => x[0] < y[0] ? -1 : 1);
+  const cu = await cuMonthly().catch(() => []);
+  return { dc: pts.slice(-72), cu: cu.slice(-72), latest: pts.at(-1)[0], source: "US Census Bureau, Construction Spending (privsatime.xlsx)", asof: iso(Date.now()), ok: true };
+}
+const CUMK = [["HG=F", "Copper (COMEX)"], ["000001.SS", "China: SSE Composite"], ["^HSI", "Hang Seng"], ["^GSPC", "S&P 500"], ["SMH", "Chips (SMH)"]];
+async function cumk() {  // weekly closes, 5y
+  const o = { asof: iso(Date.now()), ok: true, s: {} };
+  await Promise.all(CUMK.map(async ([sym, name]) => { try {
+    const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5y&interval=1wk`)).json();
+    const r = j.chart.result[0], q = r.indicators.quote[0].close;
+    o.s[sym] = { name, pts: r.timestamp.map((t, i) => [t, q[i]]).filter(p => p[1] != null).map(p => [p[0], Math.round(p[1] * (sym === "HG=F" ? LB : 1) * 100) / 100]) };
+  } catch (e) { } }));
+  if (!o.s["HG=F"]) throw new Error("no copper");
+  return o;
+}
 async function chile() {  // Cochilco monthly Chilean copper mine production, kt fine copper (TOTAL CHILE column)
   const buf = await (await get("https://www.cochilco.cl/web/download/951/cobre/12683/produccion-de-cobre-mina-por-empresa-mensual.xlsx", 20000)).arrayBuffer();
   const ss = [...(await unzipEntry(buf, "xl/sharedStrings.xml")).matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => m[1].replace(/<[^>]+>/g, "").trim());
@@ -280,7 +314,7 @@ async function chile() {  // Cochilco monthly Chilean copper mine production, kt
   }
   if (pts.length < 13) throw new Error("few rows");
   const L = pts.at(-1), [y, m] = L[0].split("-"), py = pts.find(p => p[0] === `${+y - 1}-${m}`);
-  return { pts: pts.slice(-36), latest: L[0], kt: L[1], yoy: py ? Math.round((L[1] / py[1] - 1) * 1000) / 10 : null, source: "Cochilco", asof: iso(Date.now()), ok: true };
+  return { pts: pts.slice(-72), latest: L[0], kt: L[1], yoy: py ? Math.round((L[1] / py[1] - 1) * 1000) / 10 : null, source: "Cochilco", asof: iso(Date.now()), ok: true };
 }
 async function dDiesel() {
   const pg = await (await get("https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en")).text();
@@ -377,7 +411,9 @@ export default {
     if (url.pathname === "/inv") { route = [async () => { const o = { asof: iso(Date.now()) }; await Promise.all([["comex", dComex], ["shfe", dShfe]].map(async ([k, fn]) => { try { o[k] = await fn(); } catch (e) { } })); if (!o.comex && !o.shfe) throw new Error("no inv"); return o; }, 21600]; }
     if (url.pathname.startsWith("/s/")) { const sr = sRoute(url); if (sr) { route = sr; ck += "?" + sr[2]; } }
     if (url.pathname === "/stocks") { route = [() => stocks(env), 21600]; ck += "?v=1"; }
-    if (url.pathname === "/chile") { route = [chile, 86400]; }
+    if (url.pathname === "/chile") { route = [chile, 86400]; ck += "?v=2"; }
+    if (url.pathname === "/dc") { route = [dc, 86400]; ck += "?v=1"; }
+    if (url.pathname === "/cumk") { route = [cumk, 21600]; ck += "?v=1"; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
