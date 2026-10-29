@@ -27,6 +27,15 @@ async function yahoo(sym) {
 }
 const safe = p => p.catch(e => ({ ok: false, error: String(e).slice(0, 120) }));
 
+let CAPS = { t: 0, v: {} };
+async function peerCaps() {  // USD market caps, memoised 6h per isolate
+  if (Date.now() - CAPS.t < 216e5 && Object.keys(CAPS.v).length) return CAPS.v;
+  try { const v = await valFor(PEERS.map(p => p[0])), o = {};
+    for (const [k, x] of Object.entries((v && v.rows) || {})) if (x && x.mcap_usd) o[k] = x.mcap_usd;
+    if (Object.keys(o).length) CAPS = { t: Date.now(), v: o };
+  } catch (e) { }
+  return CAPS.v;
+}
 async function prices() {
   const syms = ["ATYM.L", "HG=F", "GBPUSD=X", "EURUSD=X", "TTF=F", ...PEERS.map(p => p[0]), ...MKTS.filter(m => m[0]).map(m => m[0])];
   const r = await Promise.all(syms.map(s => safe(yahoo(s))));
@@ -39,7 +48,9 @@ async function prices() {
   if (a.ok && hg.ok) { a.rel_m1 = Math.round((a.m1 - hg.m1) * 100) / 100; a.rel_ytd = Math.round((a.ytd - hg.ytd) * 100) / 100; }
   out.markets = { rows: MKTS.map(([s, n, ex]) => s && Y[s].ok ? { sym: s, name: n, ex, price: Y[s].price, chg_pct: Y[s].chg_pct, asof: Y[s].asof } : { sym: s, name: n, ex, unavailable: true }), asof: out.generated, ok: true };
   if (Y["TTF=F"].ok) { const t = Y["TTF=F"]; delete t.hist; out.ttf = t; }
-  const rows = PEERS.map(([s, n]) => Y[s].ok ? (delete Y[s].hist, { ...Y[s], sym: s, name: n }) : null);
+  const cap = await peerCaps();
+  const rows = PEERS.map(([s, n]) => Y[s].ok ? (delete Y[s].hist, { ...Y[s], sym: s, name: n, mcap_usd: cap[s] ?? null }) : null)
+    .sort((x, y) => ((y && y.mcap_usd) || 0) - ((x && x.mcap_usd) || 0));  // largest USD market cap first
   if (rows.every(Boolean)) out.peers = { rows, asof: out.generated, ok: true };
   else out.peer_rows = rows.filter(Boolean);  // partial: page merges by symbol
   return out;
