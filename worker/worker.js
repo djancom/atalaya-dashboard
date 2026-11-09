@@ -197,6 +197,17 @@ async function chart(r, sym = "ATYM.L") {
   return { range: r, interval: iv, pts, asof: iso((res.meta.regularMarketTime || pts.at(-1)[0]) * 1000), ok: true };
 }
 
+// Read-only Yahoo 1y daily chart for the Shipping Control Centre (djancom/shipping-control-centre). Allow-listed symbols only; full precision; cached 10 min.
+const SHIP_SYMS = ["BZ=F", "CL=F", "HO=F", "NG=F", "ZW=F", "KE=F", "ZC=F", "ZS=F", "ZM=F", "ZL=F", "ZR=F", "ZO=F", "SB=F", "KC=F", "CC=F", "CT=F",
+  "MAERSK-B.CO", "HLAG.DE", "ZIM", "GSL", "SBLK", "BDRY", "GBPUSD=X", "EURUSD=X", "GBPEUR=X"];
+async function shipChart(sym) {
+  const j = await (await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1y&interval=1d`)).json();
+  const r = j.chart.result[0], m = r.meta;
+  if (!r.timestamp || !r.timestamp.length) throw new Error("no points");
+  const keep = ["symbol", "currency", "exchangeName", "regularMarketPrice", "regularMarketTime", "chartPreviousClose", "shortName", "longName"];
+  return { chart: { result: [{ meta: Object.fromEntries(keep.filter(k => m[k] != null).map(k => [k, m[k]])), timestamp: r.timestamp, indicators: { quote: [{ close: r.indicators.quote[0].close }] } }] }, src: "yahoo", asof: iso(Date.now()), ok: true };
+}
+
 // 1y daily closes for ATYM, copper, peers and COPX (for Signals z-scores). Cached 6h.
 async function peerhist() {
   const syms = ["ATYM.L", "HG=F", "COPX", ...PEERS.map(p => p[0])], out = { s: {}, asof: iso(Date.now()), ok: true };
@@ -515,6 +526,7 @@ export default {
     if (url.pathname === "/cal") { route = [() => calendar(), 10800]; ck += "?v=1"; }
     if (url.pathname === "/peerhist") { route = [peerhist, 21600]; ck += "?v=1"; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
+    if (url.pathname === "/ship/chart") { const sy = url.searchParams.get("symbol") || ""; if (SHIP_SYMS.includes(sy)) { route = [() => shipChart(sy), 600]; ck += "?v=1&symbol=" + sy; } }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
     let res = await cache.match(key);
