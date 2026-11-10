@@ -326,6 +326,266 @@ async function sNews(t) {
   if (/\.L$/i.test(t)) { let c = t.slice(0, -2).toUpperCase().replace("-", "."); if (c.length < 3 && !c.includes(".")) c += "."; out.rns = await safe(rns(c)); }
   return out;
 }
+// ---- broker calls: LSE table + news headlines ----
+const FIRMS = [
+  ["JPMorgan", /\bj\.?\s*p\.?\s*morgan\b|\bjp\s*morgan\b|\bjpm\b/i],
+  ["Bank of America", /\bbank of america\b|\bbofa\b|\bmliv\b|\bmerrill\b/i],
+  ["Canaccord", /\bcanaccord(?:\s+genuity)?\b/i],
+  ["Peel Hunt", /\bpeel hunt\b/i],
+  ["Global Mining Research", /\bglobal mining research\b|\bgmr\b/i],
+  ["Berenberg", /\bberenberg\b/i],
+  ["Stifel", /\bstifel(?:\s+nicolaus)?\b/i],
+  ["BMO", /\bbmo(?:\s+capital)?\b/i],
+  ["RBC", /\brbc(?:\s+capital(?:\s+markets)?)?\b/i],
+  ["Jefferies", /\bjefferies\b/i],
+  ["Goldman Sachs", /\bgoldman(?:\s+sachs)?\b/i],
+  ["Morgan Stanley", /\bmorgan stanley\b/i],
+  ["Barclays", /\bbarclays\b/i],
+  ["HSBC", /\bhsbc\b/i],
+  ["UBS", /\bubs\b/i],
+  ["Citi", /\bciti(?:group)?\b/i],
+  ["Deutsche Bank", /\bdeutsche(?:\s+bank)?\b/i],
+  ["Numis", /\bnumis\b/i],
+  ["Liberum", /\bliberum\b/i],
+  ["Shore Capital", /\bshore capital\b/i],
+  ["Investec", /\binvestec\b/i],
+  ["Panmure", /\bpanmure(?:\s+gordon|\s+liberum)?\b/i],
+  ["Exane", /\bexane(?:\s+bnp)?\b/i],
+  ["BNP Paribas", /\bbnp(?:\s+paribas)?\b/i],
+  ["Credit Suisse", /\bcredit suisse\b/i],
+  ["Kepler", /\bkepler(?:\s+cheuvreux)?\b/i]
+];
+const RATING_RE = /\b(strong buy|strong sell|buy|sell|hold|overweight|underweight|outperform|underperform|neutral|equal[- ]weight|market perform|sector perform|accumulate|reduce|add)\b/i;
+const ACTION_WORDS = /\b(downgrade[sd]?|upgrade[sd]?|cuts? to|raises? to|initiates?|initiated|starts coverage|reiterates?|reaffirms?|maintains?|resumes?|pt lowered|pt raised|price target (?:lowered|raised|cut|boosted)|given)\b/i;
+
+function normFirm(s) {
+  if (!s) return null;
+  const t = s.trim();
+  for (const [n, re] of FIRMS) if (re.test(t)) return n;
+  return t.replace(/\s+/g, " ").replace(/,.*$/, "").slice(0, 40) || null;
+}
+function normRating(s) {
+  if (!s) return null;
+  const x = s.toLowerCase().replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
+  const map = { "strong buy": "Strong Buy", "strong sell": "Strong Sell", buy: "Buy", sell: "Sell", hold: "Hold", overweight: "Overweight", underweight: "Underweight", outperform: "Outperform", underperform: "Underperform", neutral: "Hold", "equal weight": "Hold", "market perform": "Hold", "sector perform": "Hold", accumulate: "Buy", reduce: "Sell", add: "Buy" };
+  return map[x] || (RATING_RE.test(s) ? s.replace(/\b\w/g, c => c.toUpperCase()) : null);
+}
+function parsePence(s) {
+  if (!s) return null;
+  const t = String(s).replace(/,/g, "").trim();
+  let m = t.match(/gbp\s*(\d+(?:\.\d+)?)/i);
+  if (m) { const v = +m[1]; return v < 100 ? Math.round(v * 100) : Math.round(v); }
+  m = t.match(/(\d+(?:\.\d+)?)\s*(?:p|gbx|pence)\b/i);
+  if (m) return Math.round(+m[1]);
+  m = t.match(/\b(\d{3,5})\b/);
+  if (m) return +m[1];
+  return null;
+}
+function parseDateToIso(s) {
+  if (!s) return null;
+  const t = String(s).trim();
+  let m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (m) { const d = +m[1], mo = +m[2], y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; if (d > 0 && d < 32 && mo > 0 && mo < 13) return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`; }
+  m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[0];
+  const mon = {jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+  m = t.match(/^(\d{1,2})[\s\-]([A-Za-z]{3,9})[.,]?[\s\-](\d{2,4})$/);
+  if (m) { const mo = mon[m[2].toLowerCase()]; const y = +m[3] < 100 ? 2000 + +m[3] : +m[3]; if (mo) return `${y}-${String(mo).padStart(2,"0")}-${String(+m[1]).padStart(2,"0")}`; }
+  const p = Date.parse(t);
+  if (!isNaN(p)) {
+    const d = new Date(p);
+    // use calendar date in UTC only for already-zoned strings (RSS); avoid date-only TZ shift
+    if (/GMT|UTC|Z|[+\-]\d{2}/i.test(t) || /[A-Za-z]{3},/.test(t)) {
+      const uk = new Date(p).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+      return uk;
+    }
+  }
+  return null;
+}
+function actionOf(text, oldR, newR) {
+  const t = text.toLowerCase();
+  if (/downgrad|cuts? to|cut to|reduced to/.test(t)) return "downgrade";
+  if (/upgrad|raises? to(?!.*target)|raised to(?!.*target)|lifted to/.test(t) && /upgrad|rating/.test(t)) return "upgrade";
+  if (/\bupgrad/.test(t)) return "upgrade";
+  if (/initiates?|initiated|starts coverage|resumes? coverage/.test(t)) return "initiate";
+  if (/reiterat|reaffirm|maintains?|given\b/.test(t)) return "reiterate";
+  if (/pt lowered|target (?:lowered|cut|reduced|cut to)|cuts? (?:the )?target/.test(t)) return "target_cut";
+  if (/pt raised|target (?:raised|boosted|lifted|increased)|raises? (?:the )?target/.test(t)) return "target_raise";
+  if (oldR && newR) {
+    const rank = r => ({ "Strong Buy": 1, Buy: 2, Outperform: 2, Overweight: 2, Accumulate: 2, Add: 2, Hold: 3, Neutral: 3, Underperform: 4, Underweight: 4, Sell: 5, "Strong Sell": 5 }[r] || 3);
+    if (rank(newR) > rank(oldR)) return "downgrade";
+    if (rank(newR) < rank(oldR)) return "upgrade";
+  }
+  return null;
+}
+function parseHeadline(title, extras = {}) {
+  const raw = unesc(String(title || "").replace(/\s+/g, " "));
+  const t = raw.replace(/\s+[-|]\s+(StreetInsider|MarketBeat|London South East|AInvest|Yahoo.*|Investing\.com.*)$/i, "").trim();
+  if (!/(atalaya|atalaia|\batym\b)/i.test(t) && !extras.allow) return null;
+  if (!ACTION_WORDS.test(t) && !/(price target|pt lowered|pt raised|target price|coverage at)/i.test(t)) return null;
+  let broker = null;
+  for (const [n, re] of FIRMS) if (re.test(t)) { broker = n; break; }
+  if (!broker) return null;
+  let ratingOld = null, ratingNew = null;
+  let m = t.match(/(?:from|from a)\s+(strong buy|strong sell|buy|sell|hold|overweight|underweight|outperform|underperform|neutral)\s+to\s+(strong buy|strong sell|buy|sell|hold|overweight|underweight|outperform|underperform|neutral)/i);
+  if (m) { ratingOld = normRating(m[1]); ratingNew = normRating(m[2]); }
+  if (!ratingNew) {
+    m = t.match(/(?:downgrades?|upgrades?|cuts? to|raises? to|initiates?(?: coverage)?(?: of \w[\w\s,.]{0,40}?)?\s+at|starts coverage(?: of \w[\w\s,.]{0,40}?)?\s+at|given|reiterates?(?: a| its)?|reaffirms?(?: a| its)?|maintains?(?: a| its)?)\s+['"]?(strong buy|strong sell|buy|sell|hold|overweight|underweight|outperform|underperform|neutral)['"]?/i);
+    if (m) ratingNew = normRating(m[1]);
+  }
+  if (!ratingNew) {
+    m = t.match(/\bto\s+['"]?(strong buy|strong sell|buy|sell|hold|overweight|underweight|outperform|underperform|neutral)['"]?/i);
+    if (m) ratingNew = normRating(m[1]);
+  }
+  if (!ratingOld) {
+    m = t.match(/\bfrom\s+['"]?(strong buy|strong sell|buy|sell|hold|overweight|underweight|outperform|underperform|neutral)['"]?/i);
+    if (m) ratingOld = normRating(m[1]);
+  }
+  let tgtNew = null, tgtOld = null;
+  m = t.match(/(?:raises?|cuts?|lifts?|boosts?|lowers?)(?:\s+\w+){0,3}\s+target(?:\s+price)?\s+to\s+([£$]?[\d,.]+\s*(?:p|gbx|gbp|pence)?)\s+from\s+([£$]?[\d,.]+\s*(?:p|gbx|gbp|pence)?)/i);
+  if (m) { tgtNew = parsePence(m[1]); tgtOld = parsePence(m[2]); }
+  if (tgtNew == null) {
+    m = t.match(/\bto\s+(\d+(?:\.\d+)?p|\d+(?:\.\d+)?\s*gbx|gbp\s*\d+(?:\.\d+)?)\s+from\s+(\d+(?:\.\d+)?p|\d+(?:\.\d+)?\s*gbx|gbp\s*\d+(?:\.\d+)?)/i);
+    if (m) { tgtNew = parsePence(m[1]); tgtOld = parsePence(m[2]); }
+  }
+  if (tgtNew == null) {
+    m = t.match(/\b(?:PT|price target|target(?:\s+price)?)\s+(?:lowered|raised|cut|boosted|increased|reduced)?\s*(?:to\s+)?(GBP\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*p|GBX\s*\d+)/i);
+    if (m) tgtNew = parsePence(m[1]);
+  }
+  if (tgtNew == null) {
+    m = t.match(/GBP\s*(\d+(?:\.\d+)?)/i);
+    if (m) tgtNew = parsePence("GBP " + m[1]);
+  }
+  const action = actionOf(t, ratingOld, ratingNew);
+  if (!ratingNew && !tgtNew && !action) return null;
+  return { broker, action, rating_old: ratingOld, rating_new: ratingNew, tgt_old: tgtOld, tgt_new: tgtNew, title: t };
+}
+
+function mapLseHeader(h) {
+  const x = h.toLowerCase().replace(/\s+/g, " ").trim();
+  if (/^date$|date of/.test(x)) return "date";
+  if (/broker|firm|house|analyst name/.test(x) && !/change|action/.test(x)) return "broker";
+  if (/^(new|new rec|recommendation|rating|rec)$/.test(x) || (/\b(new|rec|rating)/.test(x) && !/old|target|price target|change/.test(x))) return "rating_new";
+  if (/old rec|old rating|previous rec/.test(x)) return "rating_old";
+  if (/old.*target|previous.*target|target.*old/.test(x)) return "tgt_old";
+  if (/new.*target|target.*new|price target|target$/.test(x)) return "tgt_new";
+  if (/type|action|change|broker change/.test(x)) return "type";
+  return null;
+}
+function parseLseTable(html) {
+  const rows = [];
+  const tables = html.match(/<table[\s\S]*?<\/table>/gi) || [];
+  for (const tb of tables) {
+    const trs = tb.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+    if (trs.length < 2) continue;
+    const cell = r => (r.match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi) || []).map(c => unesc(c.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")));
+    let map = null, start = 0;
+    for (let i = 0; i < Math.min(3, trs.length); i++) {
+      const hs = cell(trs[i]).map(mapLseHeader);
+      if (hs.includes("date") && hs.includes("broker")) { map = hs; start = i + 1; break; }
+    }
+    if (!map) continue;
+    for (const tr of trs.slice(start)) {
+      const cs = cell(tr);
+      const o = {};
+      map.forEach((k, i) => { if (k && cs[i]) o[k] = cs[i]; });
+      const date = parseDateToIso(o.date), broker = normFirm(o.broker);
+      if (!date || !broker) continue;
+      const rating_new = normRating(o.rating_new), rating_old = normRating(o.rating_old);
+      const tgt_new = parsePence(o.tgt_new), tgt_old = parsePence(o.tgt_old);
+      const typ = (o.type || "").toLowerCase();
+      let action = /downgrad/.test(typ) ? "downgrade" : /upgrad/.test(typ) ? "upgrade" : /reiterat|maintain/.test(typ) ? "reiterate" : /init/.test(typ) ? "initiate" : actionOf(typ + " " + (o.rating_new || ""), rating_old, rating_new);
+      rows.push({ date, broker, action, rating_old, rating_new, tgt_old, tgt_new, type: o.type || null, src: "LSE" });
+    }
+    if (rows.length) break;
+  }
+  return rows;
+}
+
+function mergeCalls(groups) {
+  const out = [];
+  const key = r => `${(r.broker || "").toLowerCase()}|${r.date || ""}`;
+  const score = r => (r.tgt_new != null ? 2 : 0) + (r.tgt_old != null ? 1 : 0) + (r.rating_new ? 2 : 0) + (r.rating_old ? 1 : 0) + (r.src === "LSE" ? 1 : 0);
+  const map = new Map();
+  for (const r of groups) {
+    if (!r || !r.broker || !r.date) continue;
+    const k = key(r);
+    if (!map.has(k) || score(r) > score(map.get(k))) {
+      const prev = map.get(k);
+      map.set(k, prev ? { ...prev, ...Object.fromEntries(Object.entries(r).filter(([, v]) => v != null && v !== "")), src: [prev.src, r.src].filter((x, i, a) => x && a.indexOf(x) === i).join("+") } : r);
+    }
+  }
+  return [...map.values()].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.ts || 0) - (a.ts || 0));
+}
+
+async function lseBrokerTips(code) {
+  const url = code === "ATYM"
+    ? "https://www.lse.co.uk/ShareBrokerTips.html?share=Atalaya-Mining&shareprice=ATYM"
+    : `https://www.lse.co.uk/ShareBrokerTips.html?shareprice=${encodeURIComponent(code)}`;
+  try {
+    const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(10000) });
+    const html = await r.text();
+    const blocked = r.status === 403 || r.status === 401 || /just a moment|cf-challenge|attention required|enable javascript and cookies to continue/i.test(html);
+    if (blocked) return { rows: [], ok: false, blocked: true, error: "lse blocked " + r.status, src: "LSE" };
+    if (!r.ok) return { rows: [], ok: false, blocked: false, error: "lse " + r.status, src: "LSE" };
+    const rows = parseLseTable(html);
+    if (!rows.length) return { rows: [], ok: false, blocked: false, error: "lse parse empty", src: "LSE" };
+    return { rows, ok: true, blocked: false, src: "LSE" };
+  } catch (e) {
+    const msg = String(e).slice(0, 120);
+    return { rows: [], ok: false, blocked: /403|blocked|challenge/i.test(msg), error: msg, src: "LSE" };
+  }
+}
+function rssItems(xml) {
+  const items = [];
+  for (const it of (xml.match(/<item>[\s\S]*?<\/item>/g) || [])) {
+    const g = tag => unesc((it.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)) || [, ""])[1]);
+    let title = g("title"), src = g("source");
+    if (src && title.endsWith(" - " + src)) title = title.slice(0, -src.length - 3);
+    const ts = (Date.parse(g("pubDate")) || 0) / 1000;
+    const date = ts ? new Date(ts * 1000).toLocaleDateString("en-CA", { timeZone: "Europe/London" }) : parseDateToIso(g("pubDate"));
+    items.push({ title, link: g("link"), ts, source: src || "", date });
+  }
+  return items;
+}
+async function brokerNews(code) {
+  const q = [
+    '"Atalaya Mining" (downgrade OR upgrade OR "cuts to" OR "raises to" OR "target price" OR "price target" OR reiterates OR initiates OR "starts coverage" OR "PT Lowered" OR "PT Raised" OR "Given Buy")',
+    "site:streetinsider.com Atalaya OR ATYM",
+    "site:ainvest.com Atalaya OR Atalaia OR ATYM",
+    '"Atalaya Mining" Stifel OR Berenberg OR "Peel Hunt" OR Canaccord OR JPMorgan OR "JP Morgan" OR "RBC Capital" OR BMO',
+    "ATYM (Stifel OR downgrade OR \"PT Lowered\" OR \"PT Raised\")"
+  ];
+  const urls = q.map(x => `https://news.google.com/rss/search?q=${encodeURIComponent(x + " when:180d")}&hl=en-GB&gl=GB&ceid=GB:en`);
+  urls.push("https://feeds.finance.yahoo.com/rss/2.0/headline?s=" + encodeURIComponent(code + ".L") + "&region=US&lang=en-US");
+  const texts = await Promise.all(urls.map(u => get(u, 8000).then(r => r.text()).catch(() => "")));
+  const items = texts.flatMap(rssItems);
+  const rows = [], seen = new Set();
+  for (const it of items) {
+    const p = parseHeadline(it.title);
+    if (!p || !it.date) continue;
+    const k = (p.broker + it.title).toLowerCase().replace(/\W+/g, "").slice(0, 80);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    rows.push({ ...p, date: it.date, ts: it.ts, link: it.link, src: it.source || "news", type: p.action });
+  }
+  return { rows, ok: true };
+}
+async function sBrokers(code) {
+  code = (code || "ATYM").toUpperCase().replace(/\.L$/, "");
+  const [lse, news] = await Promise.all([lseBrokerTips(code), brokerNews(code)]);
+  const rows = mergeCalls([...(lse.rows || []), ...(news.rows || [])]);
+  const body = { rows, lse: { ok: !!lse.ok, blocked: !!lse.blocked, error: lse.error || null }, news_n: (news.rows || []).length, asof: iso(Date.now()), ok: true };
+  if (rows.length && ENV && ENV.DAILY) try { await ENV.DAILY.put("brokers:" + code, JSON.stringify(body), { expirationTtl: 7 * 86400 }); } catch (e) { }
+  if (!rows.length && ENV && ENV.DAILY) {
+    try {
+      const cached = JSON.parse((await ENV.DAILY.get("brokers:" + code)) || "null");
+      if (cached && cached.rows && cached.rows.length) return { ...cached, lse: body.lse, stale: true, ok: true };
+    } catch (e) { }
+  }
+  return body;
+}
+
 function sRoute(url) {
   const p = url.pathname, q = url.searchParams, t = (q.get("t") || "").toUpperCase();
   if (p === "/s/search") { const s = (q.get("q") || "").trim().slice(0, 40); return s ? [() => sSearch(s), 86400, "v=2&q=" + s.toLowerCase()] : null; }
@@ -336,6 +596,7 @@ function sRoute(url) {
   if (p === "/s/chart") { const r = q.get("range") || "1mo"; return RANGES[r] ? [() => chart(r, t), RANGES[r][2], "t=" + t + "&r=" + r] : null; }
   if (p === "/s/peers") return [() => sPeers(t), 86400, "v=2&t=" + t];
   if (p === "/s/analyst") return [() => sAnalyst(t), 86400, "v=2&t=" + t];
+  if (p === "/s/brokers") { const c = t.replace(/\.L$/i, ""); return [() => sBrokers(c), 10800, "v=1&t=" + c]; }
   if (p === "/s/news") return [() => sNews(t), 600, "t=" + t];
   return null;
 }

@@ -13,7 +13,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:4px 6px;text-align:right
 @media(min-width:636px){.cva{grid-column:span 2}}@media(min-width:1280px){.cva{grid-row:span 2}}
 .sg{display:grid;grid-template-columns:1fr;gap:10px 28px}@media(min-width:700px){.sg{grid-template-columns:1fr 1fr}}.sgh{margin:0 0 4px;font-size:13px;color:#e6e6e6;border-bottom:1px solid #b87333;padding-bottom:4px}.sr{display:grid;grid-template-columns:1fr auto;gap:1px 10px;padding:6px 0;border-bottom:1px solid #2a333d}.sf{grid-column:1/-1;text-align:right;font-size:12px}.sg2{grid-column:1/-1}.sgu{background:#b87333;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px}
 .rc{display:grid;grid-template-columns:1fr;gap:12px}.rc>.t{min-width:0}@media(min-width:700px){.rc{grid-template-columns:1fr 1fr}}.cb{border-radius:4px;padding:1px 6px;font-size:11px;color:#fff;white-space:nowrap}.ce td{vertical-align:top;text-align:left}.cp td{opacity:.6}
-.xb{background:#2a333d;padding:6px 10px;border-radius:6px}.xb:hover{background:#3a4652}</style></head><body>
+.xb{background:#2a333d;padding:6px 10px;border-radius:6px;display:inline-block}.xb:hover{background:#3a4652}.bcalls{margin-top:6px}.bcall{padding:3px 0;border-bottom:1px solid #2a333d;font-size:12.5px;line-height:1.35}.bcall:last-child{border-bottom:0}.bcall a{color:inherit;text-decoration:none}.bcall a:hover{text-decoration:underline}</style></head><body>
 <header><h1>Atalaya Mining &middot; Copper Dashboard</h1><span class="mut" id="gen"></span></header>
 <main id="m">Loading…</main>
 <section class="t" style="margin:0 12px"><h2>On X</h2><div style="display:flex;flex-wrap:wrap;gap:8px"><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Atalaya%20Mining%22&amp;f=live">&quot;Atalaya Mining&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%24ATYM%20OR%20ATYM.L&amp;f=live">$ATYM OR ATYM.L</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Touro%20copper%20OR%20%22Proyecto%20Touro%22&amp;f=live">Touro copper OR &quot;Proyecto Touro&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=Riotinto%20copper%20Atalaya&amp;f=live">Riotinto copper Atalaya</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=%22Masa%20Valverde%22&amp;f=live">&quot;Masa Valverde&quot;</a><a class="xb" target="_blank" rel="noopener" href="https://x.com/search?q=E-LIX%20Atalaya&amp;f=live">E-LIX Atalaya</a></div><div class="mut">Opens X search, latest first.</div></section>
@@ -132,7 +132,7 @@ function isOpen(e){if(e==='CME'){const [d,m]=tz('America/New_York');if(d==='Sat'
  const [z,o,c]=EX[e],[d,m]=tz(z);return !['Sat','Sun'].includes(d)&&m>=o&&m<c}
 const mk=e=>isOpen(e)?'<span class="badge" style="background:#2e7d32">opn</span>':'<span class="badge" style="background:#c62828">clsd</span>';
 const exOf=s=>s.endsWith('.L')?'LSE':s.endsWith('.TO')?'TSX':s.endsWith('.AX')?'ASX':'NYSE';
-const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={},DY={},AN={};
+const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={},DY={},AN={},BR={};
 const wget=p=>fetch(W+p,{signal:AbortSignal.timeout(15000)}).then(r=>r.ok?r.json():{}).catch(()=>({}));
 const newer=(a,b)=>!a||!b||!a.asof||!b.asof||new Date(b.asof)>=new Date(a.asof);
 const vc=s=>{const v=((DY.val||{}).rows||{})[s]||{},na='<span class="mut">n/a</span>';return `<td>${v.pe!=null?f(v.pe,1)+'x'+(v.pe_type==='F'?'<sup class="mut" title="Forward P/E: price ÷ analysts\' expected next-12-month EPS (trailing EPS is negative or missing)">fwd</sup>':''):na}</td><td>${v.ev_ebitda!=null?f(v.ev_ebitda,1)+'x':na}</td><td>${v.div_yield!=null?f(v.div_yield,1)+'%':na}</td>`};
@@ -146,7 +146,7 @@ function merged(){const d={...B};
  const g=[B.generated,P.generated,S.generated,DY.generated].filter(Boolean).sort().pop();d.generated=g;return d}
 async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
 async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
-async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>{LS=x||{};CVD.ls=LS}),wget('/s/fund?t=ATYM.L').then(x=>MC=((x.rows||{})['ATYM.L'])||{}),wget('/s/analyst?t=ATYM.L').then(x=>AN=x||{}),wget('/chile').then(x=>CL=x||{}),wget('/inv').then(x=>IV=x),wget('/dc').then(x=>CVD.dc=x),wget('/cumk').then(x=>CVD.mk=x)]);render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>{LS=x||{};CVD.ls=LS}),wget('/s/fund?t=ATYM.L').then(x=>MC=((x.rows||{})['ATYM.L'])||{}),wget('/s/analyst?t=ATYM.L').then(x=>AN=x||{}),wget('/s/brokers?t=ATYM').then(x=>BR=x||{}),wget('/chile').then(x=>CL=x||{}),wget('/inv').then(x=>IV=x),wget('/dc').then(x=>CVD.dc=x),wget('/cumk').then(x=>CVD.mk=x)]);render()}
 function loadSig(){return Promise.all([wget('/chart?symbol=HG%3DF&range=1y').then(x=>CUY=x.pts||[]),wget('/lme?range=1y').then(x=>LMY=x.pts||[]),wget('/peerhist').then(x=>PH=x.s||{}),wget('/cal').then(x=>CAL=x||{})]).then(()=>B&&render())}
 let MC={};const ukT=ts=>ts?new Date(ts*1e3).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'}):'';const ukR=r=>{const [y,m,d]=(r.date||'').split('-');return y?`${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]} ${y}, ${r.time||''}`:''};const byTs=a=>(a||[]).slice().sort((x,y)=>(y.ts||0)-(x.ts||0)),byRns=a=>(a||[]).slice().sort((x,y)=>((y.date||'')+(y.time||'')).localeCompare((x.date||'')+(x.time||'')));const bigc=(v,p)=>v==null?'–':v>=1e12?p+f(v/1e12,2)+'tn':v>=1e9?p+f(v/1e9,v>=1e11?0:1)+'bn':p+f(v/1e6,0)+'m';
 let CUY=[],LMY=[],PH={};const dk=t=>new Date(t*1e3).toISOString().slice(0,10);
@@ -228,7 +228,35 @@ function calCard(){try{const ev=(CAL.events||[]).filter(e=>e&&e.date),td=new Dat
  const up=ev.filter(e=>e.date>=td).sort((a,b)=>a.date.localeCompare(b.date)),pa=ev.filter(e=>e.date<td).sort((a,b)=>b.date.localeCompare(a.date));
  const body=!ev.length?`<div class="mut">${CAL.ok===false||!CAL.asof?'Calendar unavailable':'No dated events found'}</div>`:`<table class="ce">${up.map(e=>row(e,0)).join('')||'<tr><td class="mut" colspan="2">No upcoming dated events found</td></tr>'}${pa.length?`<tr><td colspan="2" class="mut" style="padding-top:10px;text-transform:uppercase;letter-spacing:.05em">Recent (60d)</td></tr>`+pa.map(e=>row(e,1)).join(''):''}</table>`;
  return `<section class="t"><h2>ATYM calendar <span class="mut" style="text-transform:none;letter-spacing:0">results, meetings, AGMs, dividends</span></h2>${body}<div class="mut" style="margin-top:6px">Dates from RNS notices/timetables (Investegate) and Yahoo Finance; ~ est. = projected from the same announcement a year earlier, not confirmed.${CAL.asof?' · as of '+new Date(CAL.asof).toLocaleString('en-GB',{timeZone:'Europe/London',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+' UK':''}</div></section>`}catch(e){return '<section class="t"><h2>ATYM calendar</h2><div class="mut">No dated events found</div></section>'}}
-const HOUSES=['Bank of America','Berenberg','BMO','Canaccord','Global Mining Research','Peel Hunt','RBC'];
+const HOUSES=['Bank of America','Berenberg','BMO','Canaccord','Global Mining Research','Peel Hunt','RBC','Stifel'];
+const LSE_TIPS='https://www.lse.co.uk/ShareBrokerTips.html?share=Atalaya-Mining&shareprice=ATYM';
+const escH=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function fmtUkDay(d){if(!d)return'';const[y,m,dd]=(d||'').split('-');return y?`${+dd} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]}`:'';}
+function callMid(r){
+  if(r.rating_old&&r.rating_new&&r.rating_old!==r.rating_new)return r.rating_old+'→'+r.rating_new;
+  if(r.action==='downgrade'&&r.rating_new)return 'Downgrade to '+r.rating_new;
+  if(r.action==='upgrade'&&r.rating_new)return 'Upgrade to '+r.rating_new;
+  if(r.action==='initiate'&&r.rating_new)return 'Initiates '+r.rating_new;
+  if(r.rating_new)return r.rating_new;
+  if(r.action==='target_cut')return 'Target cut';
+  if(r.action==='target_raise')return 'Target raised';
+  if(r.action==='reiterate')return 'Reiterates'+(r.rating_new?' '+r.rating_new:'');
+  return r.action?r.action.replace(/_/g,' '):'';
+}
+function callLine(r){
+  const mid=callMid(r);
+  const tgt=r.tgt_old!=null&&r.tgt_new!=null?`${f(r.tgt_old,0)}p→${f(r.tgt_new,0)}p`:r.tgt_new!=null?`${f(r.tgt_new,0)}p`:'';
+  const col=r.action==='downgrade'||r.action==='target_cut'?'dn':r.action==='upgrade'||r.action==='target_raise'?'up':'';
+  const inner=`<span class="mut" style="white-space:nowrap">${escH(fmtUkDay(r.date))}</span> <b>${escH(r.broker)}</b>${mid?` <span class="${col}">${escH(mid)}</span>`:''}${tgt?` <span class="mut">${escH(tgt)}</span>`:''}`;
+  return `<div class="bcall">${r.link?`<a href="${escH(r.link)}" target="_blank" rel="noopener">${inner}</a>`:inner}</div>`;
+}
+function yahooLags(a,rows){
+  if(!rows||!rows.length||!a||!a.ok)return false;
+  const latest=rows[0], holdish=/hold|sell|underperform|underweight/i.test(latest.rating_new||''), yBuy=/buy/i.test(a.key||'');
+  if((latest.action==='downgrade'||holdish)&&yBuy)return true;
+  if(latest.tgt_new!=null&&a.lo!=null&&a.hi!=null&&(latest.tgt_new<a.lo-1||latest.tgt_new>a.hi+1))return true;
+  return false;
+}
 const REC={strong_buy:'Strong Buy',buy:'Buy',hold:'Hold',underperform:'Underperform',sell:'Sell',strong_sell:'Strong Sell'};
 const ukA=ts=>ts?new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'})+' UK':'';
 function tgtLine(px){
@@ -239,11 +267,15 @@ function tgtLine(px){
   return `<div style="margin-top:8px"><div>Consensus target <b>${f(a.mean,0)}p</b> <span class="${up>=0?'up':'dn'}">${up>=0?'+':''}${f(up,1)}%</span></div><div class="mut">${REC[a.key]||a.key||'–'}${a.n?` · ${a.n} analyst${a.n===1?'':'s'}`:''}</div>${bar}<div class="mut">Yahoo consensus, delayed; not advice${a.asof?' · as of '+ukA(a.asof):''}</div></div>`
 }
 function recBox(){
-  const a=AN,L=[{k:'strongBuy',n:'Strong Buy',c:'#2e7d32'},{k:'buy',n:'Buy',c:'#66bb6a'},{k:'hold',n:'Hold',c:'#8a96a3'},{k:'sell',n:'Sell',c:'#ef5350'},{k:'strongSell',n:'Strong Sell',c:'#c62828'}];
-  const houses=`<div class="mut" style="margin-top:6px">Coverage: ${HOUSES.join(', ')} <span>(company IR, names only)</span></div>`;
-  const note='<div class="mut" style="margin-top:4px">Yahoo consensus, delayed; not advice.</div>';
-  let body;
-  if(!a||!a.ok)body=`<div class="mut">n/a</div>${houses}${note}`;
+  const a=AN,b=BR||{},rows=(b.rows||[]).slice(0,5),L=[{k:'strongBuy',n:'Strong Buy',c:'#2e7d32'},{k:'buy',n:'Buy',c:'#66bb6a'},{k:'hold',n:'Hold',c:'#8a96a3'},{k:'sell',n:'Sell',c:'#ef5350'},{k:'strongSell',n:'Strong Sell',c:'#c62828'}];
+  const extras=[...new Set(rows.map(r=>r.broker).filter(x=>x&&!HOUSES.includes(x)))];
+  const houses=`<div class="mut" style="margin-top:6px">Coverage: ${[...HOUSES,...extras].join(', ')} <span>(IR names plus recent calls)</span></div>`;
+  const lag=yahooLags(a,rows)?'<div class="mut" style="margin-top:4px">Yahoo consensus may lag recent calls.</div>':'';
+  const calls=rows.length?`<div class="bcalls">${rows.map(callLine).join('')}</div>`:'<div class="mut" style="margin-top:6px">Recent calls n/a</div>';
+  const lseBtn=`<div style="margin-top:6px"><a class="xb" href="${LSE_TIPS}" target="_blank" rel="noopener">LSE broker tips</a></div>`;
+  const note='<div class="mut" style="margin-top:4px">Yahoo consensus, delayed; not advice. Recent calls from LSE and news headlines.</div>';
+  let head='';
+  if(!a||!a.ok)head='<div class="mut">Yahoo consensus n/a</div>';
   else{
     const cur=((a.trend)||[]).find(x=>x.period==='0m')||((a.trend)||[])[0];
     const tot=cur?L.reduce((s,x)=>s+(cur[x.k]||0),0):0;
@@ -254,9 +286,9 @@ function recBox(){
     if(same(cur,prev))tr='Unchanged vs last month';
     else if(prev)tr='vs last month: '+L.filter(x=>(cur[x.k]||0)!==(prev[x.k]||0)).map(x=>`${x.n} ${prev[x.k]||0}→${cur[x.k]||0}`).join(', ');
     if(m2&&!same(cur,m2)){const ch=L.filter(x=>(cur[x.k]||0)!==(m2[x.k]||0)).map(x=>`${x.n} was ${m2[x.k]||0}`);if(ch.length)tr+=(tr?'; ':'')+ch.join(', ')+' two months ago'}
-    const head=a.key||a.rmean!=null?`<div><b>${REC[a.key]||a.key||'–'}</b>${a.rmean!=null?` <span class="mut">(${f(a.rmean,2)} / 5, 1 = Strong Buy)</span>`:''}</div>`:'<div class="mut">n/a</div>';
-    body=`${head}${bar}${tr?`<div class="mut" style="margin-top:4px">${tr}</div>`:''}${houses}${note}`;
+    head=(a.key||a.rmean!=null?`<div><b>${REC[a.key]||a.key||'–'}</b>${a.rmean!=null?` <span class="mut">(${f(a.rmean,2)} / 5, 1 = Strong Buy)</span>`:''}</div>`:'<div class="mut">n/a</div>')+bar+(tr?`<div class="mut" style="margin-top:4px">${tr}</div>`:'');
   }
+  const body=`${head}${calls}${lag}${houses}${lseBtn}${note}`;
   return `<div style="align-self:start;min-width:0"><section class="t"><h2>Broker recommendations</h2>${body}</section></div>`
 }
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
