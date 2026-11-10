@@ -132,7 +132,7 @@ function isOpen(e){if(e==='CME'){const [d,m]=tz('America/New_York');if(d==='Sat'
  const [z,o,c]=EX[e],[d,m]=tz(z);return !['Sat','Sun'].includes(d)&&m>=o&&m<c}
 const mk=e=>isOpen(e)?'<span class="badge" style="background:#2e7d32">opn</span>':'<span class="badge" style="background:#c62828">clsd</span>';
 const exOf=s=>s.endsWith('.L')?'LSE':s.endsWith('.TO')?'TSX':s.endsWith('.AX')?'ASX':'NYSE';
-const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={},DY={};
+const W='https://atalaya-data.djancom.workers.dev';let B=null,P={},S={},DY={},AN={};
 const wget=p=>fetch(W+p,{signal:AbortSignal.timeout(15000)}).then(r=>r.ok?r.json():{}).catch(()=>({}));
 const newer=(a,b)=>!a||!b||!a.asof||!b.asof||new Date(b.asof)>=new Date(a.asof);
 const vc=s=>{const v=((DY.val||{}).rows||{})[s]||{},na='<span class="mut">n/a</span>';return `<td>${v.pe!=null?f(v.pe,1)+'x'+(v.pe_type==='F'?'<sup class="mut" title="Forward P/E: price ÷ analysts\' expected next-12-month EPS (trailing EPS is negative or missing)">fwd</sup>':''):na}</td><td>${v.ev_ebitda!=null?f(v.ev_ebitda,1)+'x':na}</td><td>${v.div_yield!=null?f(v.div_yield,1)+'%':na}</td>`};
@@ -146,7 +146,7 @@ function merged(){const d={...B};
  const g=[B.generated,P.generated,S.generated,DY.generated].filter(Boolean).sort().pop();d.generated=g;return d}
 async function base(){try{B=await (await fetch('data.json?'+Date.now())).json()}catch(e){}}
 async function refreshP(){P=await wget('/prices');render()}async function refreshS(){S=await wget('/slow');render()}
-async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>{LS=x||{};CVD.ls=LS}),wget('/s/fund?t=ATYM.L').then(x=>MC=((x.rows||{})['ATYM.L'])||{}),wget('/chile').then(x=>CL=x||{}),wget('/inv').then(x=>IV=x),wget('/dc').then(x=>CVD.dc=x),wget('/cumk').then(x=>CVD.mk=x)]);render()}
+async function load(){await Promise.all([base(),wget('/prices').then(x=>P=x),wget('/slow').then(x=>S=x),wget('/daily').then(x=>DY=x),wget('/stocks').then(x=>{LS=x||{};CVD.ls=LS}),wget('/s/fund?t=ATYM.L').then(x=>MC=((x.rows||{})['ATYM.L'])||{}),wget('/s/analyst?t=ATYM.L').then(x=>AN=x||{}),wget('/chile').then(x=>CL=x||{}),wget('/inv').then(x=>IV=x),wget('/dc').then(x=>CVD.dc=x),wget('/cumk').then(x=>CVD.mk=x)]);render()}
 function loadSig(){return Promise.all([wget('/chart?symbol=HG%3DF&range=1y').then(x=>CUY=x.pts||[]),wget('/lme?range=1y').then(x=>LMY=x.pts||[]),wget('/peerhist').then(x=>PH=x.s||{}),wget('/cal').then(x=>CAL=x||{})]).then(()=>B&&render())}
 let MC={};const ukT=ts=>ts?new Date(ts*1e3).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'}):'';const ukR=r=>{const [y,m,d]=(r.date||'').split('-');return y?`${d} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]} ${y}, ${r.time||''}`:''};const byTs=a=>(a||[]).slice().sort((x,y)=>(y.ts||0)-(x.ts||0)),byRns=a=>(a||[]).slice().sort((x,y)=>((y.date||'')+(y.time||'')).localeCompare((x.date||'')+(x.time||'')));const bigc=(v,p)=>v==null?'–':v>=1e12?p+f(v/1e12,2)+'tn':v>=1e9?p+f(v/1e9,v>=1e11?0:1)+'bn':p+f(v/1e6,0)+'m';
 let CUY=[],LMY=[],PH={};const dk=t=>new Date(t*1e3).toISOString().slice(0,10);
@@ -228,11 +228,42 @@ function calCard(){try{const ev=(CAL.events||[]).filter(e=>e&&e.date),td=new Dat
  const up=ev.filter(e=>e.date>=td).sort((a,b)=>a.date.localeCompare(b.date)),pa=ev.filter(e=>e.date<td).sort((a,b)=>b.date.localeCompare(a.date));
  const body=!ev.length?`<div class="mut">${CAL.ok===false||!CAL.asof?'Calendar unavailable':'No dated events found'}</div>`:`<table class="ce">${up.map(e=>row(e,0)).join('')||'<tr><td class="mut" colspan="2">No upcoming dated events found</td></tr>'}${pa.length?`<tr><td colspan="2" class="mut" style="padding-top:10px;text-transform:uppercase;letter-spacing:.05em">Recent (60d)</td></tr>`+pa.map(e=>row(e,1)).join(''):''}</table>`;
  return `<section class="t"><h2>ATYM calendar <span class="mut" style="text-transform:none;letter-spacing:0">results, meetings, AGMs, dividends</span></h2>${body}<div class="mut" style="margin-top:6px">Dates from RNS notices/timetables (Investegate) and Yahoo Finance; ~ est. = projected from the same announcement a year earlier, not confirmed.${CAL.asof?' · as of '+new Date(CAL.asof).toLocaleString('en-GB',{timeZone:'Europe/London',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+' UK':''}</div></section>`}catch(e){return '<section class="t"><h2>ATYM calendar</h2><div class="mut">No dated events found</div></section>'}}
+const HOUSES=['Bank of America','Berenberg','BMO','Canaccord','Global Mining Research','Peel Hunt','RBC'];
+const REC={strong_buy:'Strong Buy',buy:'Buy',hold:'Hold',underperform:'Underperform',sell:'Sell',strong_sell:'Strong Sell'};
+const ukA=ts=>ts?new Date(ts).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'})+' UK':'';
+function tgtLine(px){
+  const a=AN;
+  if(!a||!a.ok||a.none||a.mean==null||!px)return '<div class="mut" style="margin-top:6px">Consensus target n/a</div>';
+  const up=(a.mean/px-1)*100,lo=Math.min(a.lo??a.mean,px),hi=Math.max(a.hi??a.mean,px),r=hi-lo||1,P=x=>((x-lo)/r*100).toFixed(1);
+  const bar=`<div style="position:relative;height:14px;margin:5px 0 1px;max-width:220px"><div style="position:absolute;left:${P(a.lo??a.mean)}%;right:${100-P(a.hi??a.mean)}%;top:5px;height:4px;background:#3a4652;border-radius:2px"></div><div title="Mean target" style="position:absolute;left:${P(a.mean)}%;top:2px;width:2px;height:10px;background:#64b5f6;margin-left:-1px"></div><div title="Current price" style="position:absolute;left:${P(px)}%;top:3px;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#e8a165;border:1.5px solid #fff"></div></div><div class="mut" style="display:flex;justify-content:space-between;max-width:220px"><span>${f(a.lo,0)}p</span><span>${f(a.hi,0)}p</span></div>`;
+  return `<div style="margin-top:8px"><div>Consensus target <b>${f(a.mean,0)}p</b> <span class="${up>=0?'up':'dn'}">${up>=0?'+':''}${f(up,1)}%</span></div><div class="mut">${REC[a.key]||a.key||'–'}${a.n?` · ${a.n} analyst${a.n===1?'':'s'}`:''}</div>${bar}<div class="mut">Yahoo consensus, delayed; not advice${a.asof?' · as of '+ukA(a.asof):''}</div></div>`
+}
+function recBox(){
+  const a=AN,L=[{k:'strongBuy',n:'Strong Buy',c:'#2e7d32'},{k:'buy',n:'Buy',c:'#66bb6a'},{k:'hold',n:'Hold',c:'#8a96a3'},{k:'sell',n:'Sell',c:'#ef5350'},{k:'strongSell',n:'Strong Sell',c:'#c62828'}];
+  const houses=`<div class="mut" style="margin-top:6px">Coverage: ${HOUSES.join(', ')} <span>(company IR, names only)</span></div>`;
+  const note='<div class="mut" style="margin-top:4px">Yahoo consensus, delayed; not advice.</div>';
+  let body;
+  if(!a||!a.ok)body=`<div class="mut">n/a</div>${houses}${note}`;
+  else{
+    const cur=((a.trend)||[]).find(x=>x.period==='0m')||((a.trend)||[])[0];
+    const tot=cur?L.reduce((s,x)=>s+(cur[x.k]||0),0):0;
+    const bar=tot?`<div style="display:flex;height:10px;border-radius:3px;overflow:hidden;background:#2a333d;margin:6px 0 4px">${L.map(x=>cur[x.k]?`<div style="width:${(cur[x.k]/tot*100).toFixed(1)}%;background:${x.c}" title="${x.n} ${cur[x.k]}"></div>`:'').join('')}</div><div class="mut">${L.filter(x=>cur[x.k]).map(x=>`${cur[x.k]} ${x.n}`).join(' · ')}</div>`:'';
+    const prev=((a.trend)||[]).find(x=>x.period==='-1m'),m2=((a.trend)||[]).find(x=>x.period==='-2m');
+    const same=(p,q)=>p&&q&&L.every(x=>(p[x.k]||0)===(q[x.k]||0));
+    let tr='';
+    if(same(cur,prev))tr='Unchanged vs last month';
+    else if(prev)tr='vs last month: '+L.filter(x=>(cur[x.k]||0)!==(prev[x.k]||0)).map(x=>`${x.n} ${prev[x.k]||0}→${cur[x.k]||0}`).join(', ');
+    if(m2&&!same(cur,m2)){const ch=L.filter(x=>(cur[x.k]||0)!==(m2[x.k]||0)).map(x=>`${x.n} was ${m2[x.k]||0}`);if(ch.length)tr+=(tr?'; ':'')+ch.join(', ')+' two months ago'}
+    const head=a.key||a.rmean!=null?`<div><b>${REC[a.key]||a.key||'–'}</b>${a.rmean!=null?` <span class="mut">(${f(a.rmean,2)} / 5, 1 = Strong Buy)</span>`:''}</div>`:'<div class="mut">n/a</div>';
+    body=`${head}${bar}${tr?`<div class="mut" style="margin-top:4px">${tr}</div>`:''}${houses}${note}`;
+  }
+  return `<div style="align-self:start;min-width:0"><section class="t"><h2>Broker recommendations</h2>${body}</section></div>`
+}
 function render(){if(!B){$('#m').textContent='Could not load data.json';return}const d=merged();
  $('#gen').textContent='Updated '+new Date(d.generated).toLocaleString('en-GB');const a=d.atym||{},c=d.copper||{},x=d.fx||{},g=d.gas||{},p=d.power||{},iv=d.inventories||{};
  const H=26,D=96; let s='';
  s+=`<section class="t wide"><h2>Atalaya Mining (ATYM.L, LSE) ${mk('LSE')}</h2><div style="display:flex;gap:30px;flex-wrap:wrap;align-items:center">
- <div><div class="big">${f(a.price,1)}p</div><div><span class="mut">last session</span> ${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}</div>
+ <div><div class="big">${f(a.price,1)}p</div><div><span class="mut">last session</span> ${a.chg>=0?'+':''}${f(a.chg,1)}p ${pc(a.chg_pct)}</div>${asof(a,H)}${tgtLine(a.price)}</div>
  <div class="kv"><span>1M</span><b>${pc(a.m1)}</b><span>YTD</span><b>${pc(a.ytd)}</b><span title="ATYM % change minus COMEX copper % change">vs copper 1M, pp</span><b>${pp(a.rel_m1)}</b><span title="ATYM % change minus COMEX copper % change">vs copper YTD, pp</span><b>${pp(a.rel_ytd)}</b><span title="Shares outstanding × price, Yahoo, daily">Market cap</span><b>${MC.mcap?bigc(MC.mcap,'£')+` <span class="mut" style="font-weight:normal">(${bigc(MC.mcap_usd,'$')})</span>`:'<span class="mut">n/a</span>'}</b></div>
  <div style="flex:1;min-width:260px">${spark(CHD||(CR==='1mo'?a.hist:null))}</div></div></section>`;
  s+=`<div class="wide rc"><section class="t"><h2>ATYM RNS <span class="mut">(Investegate, times UK)</span></h2><table>${byRns((d.rns||{}).items).map(r=>`<tr><td><a href="${r.link}" target="_blank" rel="noopener">${r.title.replace(/</g,'&lt;')}</a>${r.date==new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'})?'<span class="badge" style="background:#2e7d32">today</span>':''}</td><td class="mut" style="white-space:nowrap">${ukR(r)}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${asof(d.rns,H)}</section>${calCard()}</div>`;
@@ -256,6 +287,7 @@ function render(){if(!B){$('#m').textContent='Could not load data.json';return}c
  s+=`<section class="t"><h2>Copper price: COMEX vs LME ($/t)</h2>${cuChart()}</section>`;
  s+=`<section class="t cva"><h2>Copper vs AI</h2>${cvChart()}</section>`;
  s+=`<section class="t"><h2>Markets</h2><table>${(((P.markets)||{}).rows||[]).map(r=>`<tr><td>${r.name} ${mk(r.ex)}</td><td>${r.unavailable?'<span class="mut">n/a</span>':f(r.price,r.price<100?2:r.price<1000?2:0)}</td><td>${r.unavailable?'':pc(r.chg_pct)}</td></tr>`).join('')||'<tr><td class="mut">unavailable</td></tr>'}</table>${P.markets?asof(P.markets,H):''}</section>`;
+ s+=recBox();
  s+=`<section class="t wide"><h2>Peers</h2><table><tr><th>Company</th><th>Price</th><th>Day</th><th>1M</th><th>YTD</th><th title="Trailing P/E unless marked fwd (forward)">P/E</th><th>EV/EBITDA</th><th>Yield</th></tr>${((d.peers||{}).rows||[]).map(r=>`<tr><td>${r.name} <span class="mut">${r.sym}</span> ${mk(exOf(r.sym))}${r.stale?'<span class="badge">stale</span>':''}</td><td>${r.unavailable?'–':f(r.price)+' '+(r.currency||'')}</td><td>${pc(r.chg_pct)}</td><td>${pc(r.m1)}</td><td>${pc(r.ytd)}</td>${vc(r.sym)}</tr>`).join('')}
  <tr><td><b>ATYM.L</b> ${mk('LSE')}</td><td>${f(a.price,1)} GBp</td><td>${pc(a.chg_pct)}</td><td>${pc(a.m1)}</td><td>${pc(a.ytd)}</td>${vc('ATYM.L')}</tr></table><div class="mut">P/E (trailing unless marked fwd), EV/EBITDA and trailing dividend yield computed in USD from Yahoo fundamentals, daily${DY.val?' · as of '+new Date(DY.val.asof).toLocaleDateString('en-GB'):''}</div>${asof(d.peers,H)}</section>`;
  s+=`<section class="t wide"><h2>News <span class="mut">(newest first, UK time)</span></h2><ul>${byTs((d.news||{}).items).map(n=>`<li><a href="${n.link}" target="_blank" rel="noopener">${n.title.replace(/</g,'&lt;')}</a> <span class="mut">${n.source||''} · ${ukT(n.ts)}</span></li>`).join('')}</ul>${asof(d.news,H)}</section>`;

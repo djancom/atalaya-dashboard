@@ -269,16 +269,54 @@ async function sPeers(t) {
   out = out.filter(s => { const b = s.split(".")[0].replace(/-.*/, ""); if (seen.has(b)) return false; seen.add(b); return true; });
   return { peers: out.slice(0, 6), industry: ind, asof: iso(Date.now()), ok: true };
 }
-async function sAnalyst(t) {
-  const { H, crumb } = await ycrumb();
-  const j = await (await fetch(`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(t)}?modules=financialData,price&crumb=${encodeURIComponent(crumb)}`, { headers: H, signal: AbortSignal.timeout(8000) })).json();
-  const r = j.quoteSummary.result[0], fd = r.financialData || {}, v = x => x && typeof x.raw === "number" ? x.raw : null;
-  const px = v(fd.currentPrice) ?? v(r.price.regularMarketPrice), n = v(fd.numberOfAnalystOpinions);
-  let mean = v(fd.targetMeanPrice), lo = v(fd.targetLowPrice), hi = v(fd.targetHighPrice);
-  if (!mean || !n || !px) return { none: true, asof: iso(Date.now()), ok: true };
+async function sAnalystOnce(t, { H, crumb }) {
+  const qs = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(t)}?modules=financialData,recommendationTrend,price` + (crumb ? `&crumb=${encodeURIComponent(crumb)}` : "");
+  const rs = await fetch(qs, { headers: H, signal: AbortSignal.timeout(8000) });
+  const j = await rs.json();
+  const r = ((j.quoteSummary || {}).result || [])[0];
+  if (!r) throw new Error("quoteSummary " + rs.status + " " + ((j.quoteSummary || {}).error || j.error || "empty"));
+  const fd = r.financialData || {}, v = x => x && typeof x.raw === "number" ? x.raw : null;
+  const px = v(fd.currentPrice) ?? v((r.price || {}).regularMarketPrice), n = v(fd.numberOfAnalystOpinions);
+  let mean = v(fd.targetMeanPrice), lo = v(fd.targetLowPrice), hi = v(fd.targetHighPrice), med = v(fd.targetMedianPrice);
+  const trend = ((r.recommendationTrend || {}).trend || []).map(x => ({ period: x.period, strongBuy: x.strongBuy || 0, buy: x.buy || 0, hold: x.hold || 0, sell: x.sell || 0, strongSell: x.strongSell || 0 }));
+  const rec = { key: fd.recommendationKey || null, rmean: v(fd.recommendationMean), trend, asof: iso(Date.now()), ok: true };
+  if (!mean || !n || !px) return { none: true, ...rec };
   const k = mean / px > 20 ? 0.01 : mean / px < 0.05 ? 100 : 1;  // guard against pence/pounds mix-ups
-  [mean, lo, hi] = [mean, lo, hi].map(x => x == null ? null : x * k);
-  return { mean, lo, hi, n, px, cur: r.price.currency, key: fd.recommendationKey || null, rmean: v(fd.recommendationMean), asof: iso(Date.now()), ok: true };
+  [mean, lo, hi, med] = [mean, lo, hi, med].map(x => x == null ? null : x * k);
+  return { mean, lo, hi, med, n, px, cur: (r.price || {}).currency, ...rec };
+}
+async function sAnalystCached(t) {
+  if (ENV && ENV.DAILY) try { const s = await ENV.DAILY.get("analyst:" + t); if (s) return JSON.parse(s); } catch (e) { }
+  return null;
+}
+async function sAnalystSave(t, body) {
+  if (ENV && ENV.DAILY && body && body.ok) try { await ENV.DAILY.put("analyst:" + t, JSON.stringify(body), { expirationTtl: 7 * 86400 }); } catch (e) { }
+}
+async function sAnalyst(t) {
+  try {
+    const body = await sAnalystOnce(t, await ycrumb());
+    await sAnalystSave(t, body);
+    return body;
+  } catch (e) {
+    console.error("sAnalyst first", String(e).slice(0, 200));
+    if (!/no crumb/.test(String(e))) {
+      try {
+        YC = { t: 0, H: null, crumb: null };
+        const body = await sAnalystOnce(t, await ycrumb(true));
+        await sAnalystSave(t, body);
+        return body;
+      } catch (e2) { console.error("sAnalyst retry", String(e2).slice(0, 200)); }
+    } else {
+      try {
+        const body = await sAnalystOnce(t, { H: UA, crumb: "" });
+        await sAnalystSave(t, body);
+        return body;
+      } catch (e0) { console.error("sAnalyst no-crumb", String(e0).slice(0, 200)); }
+    }
+    const cached = await sAnalystCached(t);
+    if (cached) return cached;
+    throw e;
+  }
 }
 async function sNews(t) {
   const x = await (await get(`https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(t)}&region=US&lang=en-US`)).text();
@@ -297,7 +335,7 @@ function sRoute(url) {
   if (p === "/s/quote") return [() => sQuote(t), 120, "t=" + t];
   if (p === "/s/chart") { const r = q.get("range") || "1mo"; return RANGES[r] ? [() => chart(r, t), RANGES[r][2], "t=" + t + "&r=" + r] : null; }
   if (p === "/s/peers") return [() => sPeers(t), 86400, "v=2&t=" + t];
-  if (p === "/s/analyst") return [() => sAnalyst(t), 86400, "t=" + t];
+  if (p === "/s/analyst") return [() => sAnalyst(t), 86400, "v=2&t=" + t];
   if (p === "/s/news") return [() => sNews(t), 600, "t=" + t];
   return null;
 }
@@ -439,12 +477,44 @@ async function dDiesel() {
   const date = new Date(Date.UTC(1899, 11, 30) + serial * 864e5).toISOString().slice(0, 10);
   return { price: Math.round(cell(es, "C") * 10) / 10, date, asof: date + "T12:00:00Z", ok: true };
 }
-async function ycrumb() {
-  const r0 = await fetch("https://fc.yahoo.com", { headers: UA, redirect: "manual", signal: AbortSignal.timeout(8000) });
-  const ck = (r0.headers.getSetCookie ? r0.headers.getSetCookie() : [r0.headers.get("set-cookie") || ""]).map(c => c.split(";")[0]).filter(Boolean).join("; ");
-  const H = { ...UA, Cookie: ck };
-  const crumb = await (await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", { headers: H, signal: AbortSignal.timeout(8000) })).text();
-  if (!crumb || crumb.length > 20 || /[<{ ]/.test(crumb)) throw new Error("no crumb");
+let YC = { t: 0, H: null, crumb: null }, ENV = null;
+async function ycrumb(fresh) {
+  if (!fresh && YC.crumb && Date.now() - YC.t < 30 * 60e3) return { H: YC.H, crumb: YC.crumb };
+  const loadKv = async maxAge => {
+    if (!ENV || !ENV.DAILY) return null;
+    try {
+      const s = JSON.parse(await ENV.DAILY.get("ycrumb") || "null");
+      if (s && s.crumb && s.cookie && Date.now() - s.t < maxAge) return s;
+    } catch (e) { }
+    return null;
+  };
+  if (!fresh) {
+    const s = await loadKv(30 * 60e3);
+    if (s) { YC = { t: s.t, H: { ...UA, Cookie: s.cookie }, crumb: s.crumb }; return { H: YC.H, crumb: YC.crumb }; }
+  }
+  const cookiesOf = r => (r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get("set-cookie") || ""]).map(c => c.split(";")[0]).filter(Boolean);
+  let ck = [], st0 = 0, limited = false;
+  for (const u of ["https://fc.yahoo.com", "https://finance.yahoo.com/"]) {
+    try { const r = await fetch(u, { headers: UA, redirect: "manual", signal: AbortSignal.timeout(8000) }); st0 = r.status; ck = [...new Set(ck.concat(cookiesOf(r)))]; if (ck.some(c => /^A3=/.test(c))) break; } catch (e) { }
+  }
+  const H = { ...UA, Cookie: ck.join("; ") };
+  let crumb = "", cst = 0;
+  for (const host of ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]) {
+    try {
+      const r = await fetch(`https://${host}/v1/test/getcrumb`, { headers: H, signal: AbortSignal.timeout(8000) });
+      cst = r.status; crumb = await r.text();
+      if (cst === 429) { limited = true; break; }
+      if (crumb && crumb.length <= 20 && !/[<{ ]/.test(crumb)) break;
+    } catch (e) { }
+  }
+  if (!crumb || crumb.length > 20 || /[<{ ]/.test(crumb)) {
+    const stale = await loadKv(6 * 3600e3);
+    if (stale) { YC = { t: stale.t, H: { ...UA, Cookie: stale.cookie }, crumb: stale.crumb }; return { H: YC.H, crumb: YC.crumb }; }
+    console.error("no crumb", "site", st0, "cookies", ck.length, "getcrumb", cst, "len", (crumb || "").length, limited ? "429" : "");
+    YC = { t: 0, H: null, crumb: null }; throw new Error("no crumb");
+  }
+  YC = { t: Date.now(), H, crumb };
+  if (ENV && ENV.DAILY) try { await ENV.DAILY.put("ycrumb", JSON.stringify({ crumb, cookie: ck.join("; "), t: YC.t }), { expirationTtl: 6 * 3600 }); } catch (e) { }
   return { H, crumb };
 }
 function localCap(sh, px, qc, ymc) {  // market cap in the trading currency (GBp/ZAc/ILA prices are minor units)
@@ -502,8 +572,9 @@ async function refreshDaily(env) {
 }
 
 export default {
-  async scheduled(ev, env, ctx) { ctx.waitUntil(refreshDaily(env)); },
+  async scheduled(ev, env, ctx) { ENV = env; ctx.waitUntil(refreshDaily(env)); },
   async fetch(req, env, ctx) {
+    ENV = env;
     const origin = req.headers.get("Origin") || "", url = new URL(req.url);
     const cors = { "Vary": "Origin", ...(allowed(origin) ? { "Access-Control-Allow-Origin": origin } : {}) };
     if (req.method === "OPTIONS") return new Response(null, { headers: { ...cors, "Access-Control-Allow-Methods": "GET" } });
@@ -531,7 +602,7 @@ export default {
     const key = new Request(url.origin + ck), cache = caches.default;
     let res = await cache.match(key);
     if (!res) {
-      const body = await Promise.race([route[0](), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 20000))]).catch(e => null);
+      const body = await Promise.race([route[0](), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 20000))]).catch(e => { console.error("route", url.pathname, String(e).slice(0, 200)); return null; });
       if (!body) return new Response('{"error":"upstream"}', { status: 502, headers: { ...cors, "Content-Type": "application/json" } });
       res = new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${route[1]}` } });
       ctx.waitUntil(cache.put(key, res.clone()));
