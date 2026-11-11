@@ -832,6 +832,17 @@ async function refreshDaily(env) {
   return out;
 }
 
+
+async function ukmtoRelay() {
+  const h = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36", "Accept": "application/json", "Referer": "https://www.ukmto.org/recent-incidents" };
+  const get = async u => { const r = await fetch(u, { headers: h }); if (!r.ok) throw new Error(u + " -> HTTP " + r.status); return r.json(); };
+  const o = { fetched: new Date().toISOString() };
+  o.all = await get("https://sc.royalnavy.mod.uk/api/ukmto/all");
+  try { o.jmic_counts = await get("https://sc.royalnavy.mod.uk/api/ukmto/products-count/84a787ea-9bf6-4f47-9689-e2c0546dbdad"); } catch (e) { o.jmic_error = String(e).slice(0, 200); }
+  if (!Array.isArray(o.all) || !o.all.length) throw new Error("ukmto empty");
+  return o;
+}
+
 export default {
   async scheduled(ev, env, ctx) { ENV = env; ctx.waitUntil(refreshDaily(env)); },
   async fetch(req, env, ctx) {
@@ -859,6 +870,7 @@ export default {
     if (url.pathname === "/peerhist") { route = [peerhist, 21600]; ck += "?v=1"; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (url.pathname === "/ship/chart") { const sy = url.searchParams.get("symbol") || ""; if (SHIP_SYMS.includes(sy)) { route = [() => shipChart(sy), 600]; ck += "?v=1&symbol=" + sy; } }
+    if (url.pathname === "/ship/ukmto") { route = [ukmtoRelay, 1800]; ck += "?v=1"; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
     let res = await cache.match(key);
