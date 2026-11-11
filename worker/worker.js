@@ -833,7 +833,7 @@ async function refreshDaily(env) {
 }
 
 
-async function ukmtoRelay() {
+async function ukmtoFetch() {
   const h = { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36", "Accept": "application/json", "Referer": "https://www.ukmto.org/recent-incidents" };
   const get = async u => { const r = await fetch(u, { headers: h }); if (!r.ok) throw new Error(u + " -> HTTP " + r.status); return r.json(); };
   const o = { fetched: new Date().toISOString() };
@@ -842,9 +842,22 @@ async function ukmtoRelay() {
   if (!Array.isArray(o.all) || !o.all.length) throw new Error("ukmto empty");
   return o;
 }
+// UKMTO blocks some data-centre ranges, so keep the last good copy in KV and serve it (labelled) when a live fetch fails.
+async function ukmtoRelay() {
+  try {
+    const o = await ukmtoFetch();
+    try { await ENV.DAILY.put("ukmto", JSON.stringify(o)); } catch (e) { }
+    return o;
+  } catch (e) {
+    const v = ENV && ENV.DAILY ? await ENV.DAILY.get("ukmto") : null;
+    if (!v) throw e;
+    const o = JSON.parse(v); o.served_from_kv = true; o.live_error = String(e).slice(0, 200);
+    return o;
+  }
+}
 
 export default {
-  async scheduled(ev, env, ctx) { ENV = env; ctx.waitUntil(refreshDaily(env)); },
+  async scheduled(ev, env, ctx) { ENV = env; ctx.waitUntil(refreshDaily(env)); ctx.waitUntil(ukmtoRelay().catch(() => null)); },
   async fetch(req, env, ctx) {
     ENV = env;
     const origin = req.headers.get("Origin") || "", url = new URL(req.url);
@@ -870,7 +883,7 @@ export default {
     if (url.pathname === "/peerhist") { route = [peerhist, 21600]; ck += "?v=1"; }
     if (url.pathname === "/lmestock") { route = [() => lme("1y", 2), 21600]; }
     if (url.pathname === "/ship/chart") { const sy = url.searchParams.get("symbol") || ""; if (SHIP_SYMS.includes(sy)) { route = [() => shipChart(sy), 600]; ck += "?v=1&symbol=" + sy; } }
-    if (url.pathname === "/ship/ukmto") { route = [ukmtoRelay, 1800]; ck += "?v=1"; }
+    if (url.pathname === "/ship/ukmto") { route = [ukmtoRelay, 1800]; ck += "?v=2"; }
     if (!route || req.method !== "GET") return new Response("not found", { status: 404, headers: cors });
     const key = new Request(url.origin + ck), cache = caches.default;
     let res = await cache.match(key);
